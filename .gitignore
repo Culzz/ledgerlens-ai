@@ -1,0 +1,47 @@
+# --- Secrets & local config ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Node / frontend ---
+node_modules/
+dist/
+frontend/node_modules/
+frontend/dist/
+*.local
+
+# --- Data & artifacts (do NOT commit datasets or uploads) ---
+data/*
+!data/README.md
+!data/.gitkeep
+data/finqa/
+data/uploads/
+*.pdf
+*.db
+*.sqlite3
+
+# --- Evaluation outputs ---
+evaluation/reports/*
+!evaluation/reports/.gitkeep
+!evaluation/reports/README.md
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.idea/

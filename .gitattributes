@@ -1,0 +1,7 @@
+# Normalize line endings so Windows checkouts don't churn the whole repo.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.xlsx binary
