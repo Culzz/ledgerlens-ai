@@ -11,13 +11,14 @@ and never gets to supply a number.
 
 ## Status
 
-Early. The dataset loader, the calculation engine and a first retrieval measurement are in.
+Early. The dataset loader, the calculation engine, a retrieval measurement and the evaluation
+harness are in.
 
 The engine replays every gold program in FinQA's dev split exactly, which is a check on the engine
 and not on a model.
 
-Retrieval has been measured as well, and it is the tighter constraint right now. BM25 over 26,834
-evidence units, dev split, 818 questions carrying annotations:
+Retrieval has been measured as well. BM25 over 26,834 evidence units, dev split, 818 questions
+carrying annotations:
 
 | k | recall@k | complete@k |
 | ---- | ---- | ---- |
@@ -29,13 +30,23 @@ evidence units, dev split, 818 questions carrying annotations:
 `complete@k` is the share of questions where *all* the evidence a question needs is inside the top
 k, so it caps end-to-end accuracy for anything that reads only those k units.
 
-No model has been run yet, so there is no accuracy figure here. If you see accuracy numbers for
-LedgerLens anywhere, they didn't come from here. Numbers only appear in this repo once a script
-under `evaluation/` produces them.
+A useful thing fell out of that number. FinQA documents are small — a few table rows and a couple of
+dozen narrative lines — so a prompt containing the whole document already contains the evidence. On
+this benchmark retrieval is not the bottleneck; the reasoning is. Retrieval and citation are what
+the product needs, and FinQA cannot tell you whether they work.
+
+The evaluation harness and the first baseline exist, and the model layer is provider-neutral. No
+model has been run yet, because that needs a provider and there isn't one configured, so there is no
+accuracy figure here. If you see accuracy numbers for LedgerLens anywhere, they didn't come from
+here. Numbers only appear in this repo once a script under `evaluation/` produces them.
+
+`LLM_PROVIDER` defaults to `fake`, which answers offline with no key and no spend. That is how the
+harness, its resume behaviour and its error handling are tested.
 
 ```
 python -m evaluation.replay_gold_programs --split data/finqa/dev.json
 python -m evaluation.retrieval_ceiling   --split data/finqa/dev.json
+python -m evaluation.run_eval            --split data/finqa/dev.json --system direct
 ```
 
 ## Why it's built this way
@@ -101,8 +112,10 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-No API key needed yet. The LLM bits live behind an optional extra (`.[llm]`) and don't get installed
-until the baselines exist.
+No API key needed. The model layer is provider-neutral and defaults to an offline provider, so
+everything runs without one. When you want real answers, set `LLM_PROVIDER` and `LLM_MODEL` in
+`.env` and add a key — the adapter speaks the OpenAI chat-completions shape, so Groq, Cerebras,
+OpenRouter and OpenAI are a change to configuration rather than to code.
 
 ## Plan
 
