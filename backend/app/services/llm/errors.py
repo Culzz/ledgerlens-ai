@@ -38,3 +38,12 @@ class BudgetExceeded(LLMError):
 
 class ScriptExhausted(LLMError):
     """A scripted fake provider ran out of canned responses."""
+
+
+# Errors that mean "stop the run", rather than "this one question failed".
+#
+# The distinction matters. A malformed reply or a stray 400 is one bad question
+# and the run carries on. A rate limit, an exhausted budget or a missing key will
+# fail the same way on every remaining question, so carrying on just burns the
+# quota the pause was protecting.
+RUN_HALTING_ERRORS = (ProviderNotConfigured, ProviderRateLimited, BudgetExceeded)

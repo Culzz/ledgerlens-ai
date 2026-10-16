@@ -7,6 +7,7 @@ provider that is, and whether it costs anything, is decided by configuration.
 from .base import LLMProvider
 from .budget import BudgetLedger
 from .errors import (
+    RUN_HALTING_ERRORS,
     BudgetExceeded,
     InvalidResponse,
     LLMError,
@@ -25,6 +26,7 @@ from .types import Completion, Message, Usage, assistant, system, user
 
 __all__ = [
     "COMPATIBLE_ENDPOINTS",
+    "RUN_HALTING_ERRORS",
     "BudgetExceeded",
     "BudgetLedger",
     "Completion",

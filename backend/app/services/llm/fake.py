@@ -41,6 +41,7 @@ class FakeLLM:
     """
 
     name = "fake"
+    max_retries = 0
 
     def __init__(
         self,
@@ -51,9 +52,9 @@ class FakeLLM:
         free_tier: bool = True,
     ) -> None:
         self.model = model
+        self.free_tier = free_tier
         self._script: list[str] | None = list(responses) if responses is not None else None
         self._responder = responder
-        self._free_tier = free_tier
         self.calls: list[dict[str, object]] = []
 
     def complete(
@@ -79,7 +80,7 @@ class FakeLLM:
         )
         cost = (
             0.0
-            if self._free_tier
+            if self.free_tier
             else estimate_cost(self.model, usage.prompt_tokens, usage.completion_tokens)
         )
 
