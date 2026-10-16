@@ -11,9 +11,16 @@ and never gets to supply a number.
 
 ## Status
 
-Early. Right now this repo is scaffolding and docs. No pipeline code yet, and no benchmark results.
-If you see accuracy numbers for LedgerLens anywhere, they didn't come from here. Numbers only appear
-in this repo once a script under `evaluation/` produces them.
+Early. The dataset loader and the calculation engine are in. The engine replays every gold program
+in FinQA's dev split exactly, which is a self-check on the engine and not a model result.
+
+There are no model results yet, and nothing has been compared against a baseline. If you see
+accuracy numbers for LedgerLens anywhere, they didn't come from here. Numbers only appear in this
+repo once a script under `evaluation/` produces them.
+
+```
+python -m evaluation.replay_gold_programs --split data/finqa/dev.json
+```
 
 ## Why it's built this way
 
@@ -84,15 +91,18 @@ until the baselines exist.
 ## Plan
 
 ```
-1. repo, FinQA loader, data checks        <- here
-2. calculation engine, tested against FinQA's own reasoning programs
-3. evaluation harness + two baselines
+1. repo, FinQA loader, data checks                                    done
+2. calculation engine, tested against FinQA's own reasoning programs   done
+3. evaluation harness + two baselines                                 <- here
 4. hybrid retrieval + orchestrator
 5. verifier and abstention
 6. PDF ingestion
 7. API and frontend
 8. experiments, docker, writeup
 ```
+
+The engine replays the 883 gold programs in the dev split with no model involved, so a wrong answer
+from here on is a retrieval or reasoning problem, not an arithmetic one.
 
 ## What this isn't
 
