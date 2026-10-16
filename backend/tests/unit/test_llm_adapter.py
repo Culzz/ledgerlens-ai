@@ -468,6 +468,40 @@ class TestRetries:
         make_provider(responder, sleeps=sleeps).complete([user("q")])
         assert sleeps.delays == [7.0]
 
+    def test_retry_delay_in_the_body_is_honoured(self):
+        """Gemini reports its wait in the body rather than in a header."""
+        sleeps = SleepRecorder()
+        response = httpx.Response(429, json={"error": {"details": [{"retryDelay": "7s"}]}})
+        make_provider(Responder([response, ok()]), sleeps=sleeps).complete([user("q")])
+        assert sleeps.delays == [7.0]
+
+    def test_the_header_wins_when_both_are_present(self):
+        sleeps = SleepRecorder()
+        response = httpx.Response(
+            429,
+            json={"error": {"details": [{"retryDelay": "99s"}]}},
+            headers={"retry-after": "7"},
+        )
+        make_provider(Responder([response, ok()]), sleeps=sleeps).complete([user("q")])
+        assert sleeps.delays == [7.0]
+
+    def test_a_daily_quota_stops_the_run_instead_of_sleeping_hours(self):
+        sleeps = SleepRecorder()
+        response = httpx.Response(
+            429,
+            json={
+                "error": {
+                    "code": 429,
+                    "message": "You exceeded your current quota",
+                    "details": [{"retryDelay": "34484.99s"}],
+                }
+            },
+        )
+        provider = make_provider(Responder([response]), sleeps=sleeps)
+        with pytest.raises(ProviderRateLimited, match=r"9h34m"):
+            provider.complete([user("q")])
+        assert sleeps.delays == [], "it must not sit through a nine hour wait"
+
     def test_backoff_grows_when_no_header_is_given(self):
         sleeps = SleepRecorder()
         responder = Responder(

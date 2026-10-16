@@ -60,6 +60,59 @@ def retry_after_seconds(response: httpx.Response) -> float | None:
         return None
 
 
+# A provider asking for longer than this is not asking us to retry, it is telling
+# us the quota is spent until later. Sitting through it would hold a terminal for
+# hours, so the run stops and says when to come back.
+MAX_RETRY_AFTER_SECONDS = 300.0
+
+
+def _body_retry_delay(response: httpx.Response) -> float | None:
+    """The provider's own estimate from the body, for when there is no header.
+
+    Gemini reports a spent daily quota here rather than in ``Retry-After``, as
+    ``details[].retryDelay`` holding something like ``"34484.99s"``. That is the
+    difference between resuming in a minute and resuming tomorrow, so it is worth
+    reading even though it is not the standard place for it.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+
+    error = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(error, dict):
+        return None
+
+    for detail in error.get("details") or []:
+        if not isinstance(detail, dict):
+            continue
+        raw = detail.get("retryDelay")
+        if isinstance(raw, str) and raw.endswith("s"):
+            try:
+                return max(0.0, float(raw[:-1]))
+            except ValueError:
+                continue
+    return None
+
+
+def retry_delay_seconds(response: httpx.Response) -> float | None:
+    """How long the provider says to wait: the header first, then the body."""
+    header = retry_after_seconds(response)
+    return header if header is not None else _body_retry_delay(response)
+
+
+def humanise_delay(seconds: float) -> str:
+    """Render a wait readably. "34484s" says nothing at a glance."""
+    total = round(seconds)
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
 def _truncate(text: str, limit: int = 300) -> str:
     text = text.strip()
     return text if len(text) <= limit else text[:limit] + "..."
@@ -171,18 +224,29 @@ class OpenAICompatibleProvider:
                         f"{self.name} returned {response.status_code}: "
                         f"{_truncate(response.text)}"
                     )
-                retry_after = retry_after_seconds(response)
+                asked = retry_delay_seconds(response)
                 detail = (
                     f"{self.name} rate limited (429) on attempt {attempt}"
                     if response.status_code == 429
                     else f"{self.name} returned {response.status_code} on attempt {attempt}: "
                     f"{_truncate(response.text, 160)}"
                 )
+                if (
+                    response.status_code == 429
+                    and asked is not None
+                    and asked > MAX_RETRY_AFTER_SECONDS
+                ):
+                    # A daily quota, not a burst. Retrying cannot help within this
+                    # run, so stop and report when the quota comes back.
+                    raise ProviderRateLimited(
+                        f"{detail}; the quota returns in about {humanise_delay(asked)}"
+                    )
                 failure = (
                     ProviderRateLimited(detail)
                     if response.status_code == 429
                     else ProviderUnavailable(detail)
                 )
+                retry_after = asked
 
             if attempt == attempts:
                 raise failure
