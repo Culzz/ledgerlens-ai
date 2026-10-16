@@ -94,6 +94,46 @@ class TestNormalisation:
         assert ex.gold_inds == {}
 
 
+class TestAnnotationRows:
+    """The annotation rows are the ground truth for retrieval, so they matter."""
+
+    def test_annotation_rows_are_parsed(self):
+        record = _record()
+        record["qa"]["ann_table_rows"] = [1, 2]
+        record["qa"]["ann_text_rows"] = [0]
+        ex = parse_example(record)
+        assert ex.ann_table_rows == (1, 2)
+        assert ex.ann_text_rows == (0,)
+
+    def test_missing_annotation_rows_default_to_empty(self):
+        ex = parse_example(_record())
+        assert ex.ann_table_rows == ()
+        assert ex.ann_text_rows == ()
+
+    def test_non_integer_annotation_rows_are_rejected(self):
+        record = _record()
+        record["qa"]["ann_table_rows"] = ["1"]
+        with pytest.raises(FinQASchemaError, match="must contain integers"):
+            parse_example(record)
+
+    def test_boolean_annotation_row_is_rejected(self):
+        # bool is a subclass of int, and True as a row index would pass silently.
+        record = _record()
+        record["qa"]["ann_table_rows"] = [True]
+        with pytest.raises(FinQASchemaError, match="must contain integers"):
+            parse_example(record)
+
+    def test_non_list_annotation_rows_are_rejected(self):
+        record = _record()
+        record["qa"]["ann_text_rows"] = 3
+        with pytest.raises(FinQASchemaError, match="must be a list of integers"):
+            parse_example(record)
+
+    def test_filename_is_captured_when_present(self):
+        ex = parse_example(_record(filename="ETR/2016/page_23.pdf"))
+        assert ex.filename == "ETR/2016/page_23.pdf"
+
+
 class TestSchemaErrors:
     def test_missing_qa_is_rejected(self):
         record = _record()

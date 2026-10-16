@@ -68,6 +68,13 @@ class FinQAExample:
     exe_ans: Any
     program_re: str | None = None
     gold_inds: Mapping[str, Any] = field(default_factory=dict)
+    filename: str | None = None
+    # Which table rows and which text lines the annotators marked as the evidence
+    # needed to answer. These are what FinQA's own retriever was trained against,
+    # so they are the ground truth for measuring retrieval. Note that ``gold_inds``
+    # is a separate annotation and disagrees with these on a minority of records.
+    ann_table_rows: tuple[int, ...] = ()
+    ann_text_rows: tuple[int, ...] = ()
 
     @property
     def context_text(self) -> tuple[str, ...]:
@@ -104,6 +111,30 @@ def _text_list(
         index=index,
         example_id=example_id,
     )
+
+
+def _int_list(
+    value: Any, *, field_name: str, index: int, example_id: str | None
+) -> tuple[int, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise FinQASchemaError(
+            f"{field_name} must be a list of integers, got {type(value).__name__}",
+            index=index,
+            example_id=example_id,
+        )
+    out: list[int] = []
+    for item in value:
+        # bool is a subclass of int, and True as a row index would be a silent bug.
+        if isinstance(item, bool) or not isinstance(item, int):
+            raise FinQASchemaError(
+                f"{field_name} must contain integers, got {type(item).__name__}",
+                index=index,
+                example_id=example_id,
+            )
+        out.append(item)
+    return tuple(out)
 
 
 def _table(
@@ -192,6 +223,19 @@ def parse_example(record: Mapping[str, Any], *, index: int | None = None) -> Fin
         exe_ans=qa["exe_ans"],
         program_re=qa.get("program_re"),
         gold_inds=gold_inds,
+        filename=record.get("filename"),
+        ann_table_rows=_int_list(
+            qa.get("ann_table_rows"),
+            field_name="qa.ann_table_rows",
+            index=index,
+            example_id=example_id,
+        ),
+        ann_text_rows=_int_list(
+            qa.get("ann_text_rows"),
+            field_name="qa.ann_text_rows",
+            index=index,
+            example_id=example_id,
+        ),
     )
 
 
