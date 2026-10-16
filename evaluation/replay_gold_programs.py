@@ -19,7 +19,7 @@ import argparse
 import json
 from collections import Counter
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.services.calculations import (
@@ -118,7 +118,7 @@ def replay(examples, *, tolerance="1e-3") -> ReplayReport:
         split="<memory>",
         source="<memory>",
         tolerance=tolerance,
-        generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        generated_at=datetime.now(UTC).isoformat(timespec="seconds"),
     )
     by_steps: dict[str, dict[str, int]] = {}
     error_kinds: Counter[str] = Counter()
@@ -161,7 +161,7 @@ def replay(examples, *, tolerance="1e-3") -> ReplayReport:
 
 
 def save(report: ReplayReport, out_root: Path, name: str) -> Path:
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+    stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
     target = out_root / f"{stamp}_replay_{name}"
     target.mkdir(parents=True, exist_ok=True)
 

@@ -38,9 +38,10 @@ Everything below was checked against the real dev split before being relied on:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from decimal import Decimal, DivisionByZero as _DecimalDivisionByZero, InvalidOperation
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+from typing import Any
 
 GREATER_TRUE = "yes"
 GREATER_FALSE = "no"
@@ -431,8 +432,7 @@ def _parse_number(text: str) -> Decimal:
         negative = True
         raw = raw[1:-1]
 
-    if raw.startswith("+"):
-        raw = raw[1:]
+    raw = raw.removeprefix("+")
 
     if raw.endswith("%"):
         percent = True

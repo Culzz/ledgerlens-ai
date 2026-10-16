@@ -1,8 +1,8 @@
 from .bm25 import BM25Index, tokenize
 from .units import (
-    EvidenceUnit,
     TABLE,
     TEXT,
+    EvidenceUnit,
     build_units,
     evidence_kinds,
     gold_unit_ids,
@@ -11,10 +11,10 @@ from .units import (
 )
 
 __all__ = [
-    "BM25Index",
-    "EvidenceUnit",
     "TABLE",
     "TEXT",
+    "BM25Index",
+    "EvidenceUnit",
     "build_units",
     "evidence_kinds",
     "gold_unit_ids",

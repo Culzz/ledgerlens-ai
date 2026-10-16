@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter, defaultdict
-from typing import Iterable
+from collections.abc import Iterable
 
 # Words, and numbers kept whole including decimals. Commas inside numbers are
 # removed before tokenising, so "1,234" and "1234" produce the same token and a

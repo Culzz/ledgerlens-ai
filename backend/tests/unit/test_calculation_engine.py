@@ -10,12 +10,11 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-
 from app.services.calculations import (
-    CalculationError,
-    Call,
     GREATER_FALSE,
     GREATER_TRUE,
+    CalculationError,
+    Call,
     InvalidArgument,
     Literal,
     ProgramSyntaxError,

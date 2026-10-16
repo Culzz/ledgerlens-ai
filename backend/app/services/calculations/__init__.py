@@ -1,9 +1,9 @@
 from .engine import (
+    GREATER_FALSE,
+    GREATER_TRUE,
     CalculationError,
     CalculationTrace,
     Call,
-    GREATER_FALSE,
-    GREATER_TRUE,
     InvalidArgument,
     Literal,
     ProgramSyntaxError,
@@ -17,11 +17,11 @@ from .engine import (
 )
 
 __all__ = [
+    "GREATER_FALSE",
+    "GREATER_TRUE",
     "CalculationError",
     "CalculationTrace",
     "Call",
-    "GREATER_FALSE",
-    "GREATER_TRUE",
     "InvalidArgument",
     "Literal",
     "ProgramSyntaxError",

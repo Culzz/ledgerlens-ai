@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import pytest
-
 from app.services.dataset import FinQAExample
 from app.services.retrieval import (
-    BM25Index,
     TABLE,
     TEXT,
+    BM25Index,
     build_units,
     evidence_kinds,
     gold_unit_ids,
@@ -20,17 +19,17 @@ from app.services.retrieval import (
 
 def example(**overrides) -> FinQAExample:
     """A small document: a two-row table and two narrative lines."""
-    defaults = dict(
-        id="DOC/1",
-        question="what was net sales in 2016?",
-        table=(("", "2016", "2015"), ("net sales", "100", "90")),
-        pre_text=("the company reported net sales of 100.",),
-        post_text=("amounts are in millions.",),
-        program="table_max(net sales, 2016)",
-        exe_ans=100,
-        ann_table_rows=(1,),
-        ann_text_rows=(0,),
-    )
+    defaults = {
+        "id": "DOC/1",
+        "question": "what was net sales in 2016?",
+        "table": (("", "2016", "2015"), ("net sales", "100", "90")),
+        "pre_text": ("the company reported net sales of 100.",),
+        "post_text": ("amounts are in millions.",),
+        "program": "table_max(net sales, 2016)",
+        "exe_ans": 100,
+        "ann_table_rows": (1,),
+        "ann_text_rows": (0,),
+    }
     defaults.update(overrides)
     return FinQAExample(**defaults)
 

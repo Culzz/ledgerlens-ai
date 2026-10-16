@@ -32,7 +32,7 @@ import argparse
 import json
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.services.dataset import FinQAExample, load_split
@@ -168,7 +168,7 @@ def render(report: CeilingReport) -> str:
 
 
 def save(report: CeilingReport, per_question: list[QuestionResult], out_root: Path, name: str) -> Path:
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+    stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
     target = out_root / f"{stamp}_retrieval_ceiling_{name}"
     target.mkdir(parents=True, exist_ok=True)
 
@@ -260,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     report = CeilingReport(
         split=str(path),
         retriever=f"BM25(k1={args.k1}, b={args.b})",
-        generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        generated_at=datetime.now(UTC).isoformat(timespec="seconds"),
         ks=ks,
         records=len(examples),
         corpus_units=len(index),
