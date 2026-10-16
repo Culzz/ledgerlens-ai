@@ -27,9 +27,9 @@ extraction = [
 retrieval = [
     "sentence-transformers>=3.0",
 ]
-llm = [
-    "openai>=1.40",
-]
+# The LLM adapter talks to providers over plain HTTP (httpx, already a core
+# dependency) rather than through a vendor SDK, so there is nothing extra to
+# install to use a real model.
 dev = [
     "pytest>=8.2",
     "pytest-cov>=5.0",
