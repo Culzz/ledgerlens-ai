@@ -11,15 +11,31 @@ and never gets to supply a number.
 
 ## Status
 
-Early. The dataset loader and the calculation engine are in. The engine replays every gold program
-in FinQA's dev split exactly, which is a self-check on the engine and not a model result.
+Early. The dataset loader, the calculation engine and a first retrieval measurement are in.
 
-There are no model results yet, and nothing has been compared against a baseline. If you see
-accuracy numbers for LedgerLens anywhere, they didn't come from here. Numbers only appear in this
-repo once a script under `evaluation/` produces them.
+The engine replays every gold program in FinQA's dev split exactly, which is a check on the engine
+and not on a model.
+
+Retrieval has been measured as well, and it is the tighter constraint right now. BM25 over 26,834
+evidence units, dev split, 818 questions carrying annotations:
+
+| k | recall@k | complete@k |
+| ---- | ---- | ---- |
+| 1 | 0.432 | 0.329 |
+| 3 | 0.662 | 0.532 |
+| 5 | 0.764 | 0.665 |
+| 10 | 0.868 | 0.812 |
+
+`complete@k` is the share of questions where *all* the evidence a question needs is inside the top
+k, so it caps end-to-end accuracy for anything that reads only those k units.
+
+No model has been run yet, so there is no accuracy figure here. If you see accuracy numbers for
+LedgerLens anywhere, they didn't come from here. Numbers only appear in this repo once a script
+under `evaluation/` produces them.
 
 ```
 python -m evaluation.replay_gold_programs --split data/finqa/dev.json
+python -m evaluation.retrieval_ceiling   --split data/finqa/dev.json
 ```
 
 ## Why it's built this way
@@ -93,12 +109,13 @@ until the baselines exist.
 ```
 1. repo, FinQA loader, data checks                                    done
 2. calculation engine, tested against FinQA's own reasoning programs   done
-3. evaluation harness + two baselines                                 <- here
-4. hybrid retrieval + orchestrator
-5. verifier and abstention
-6. PDF ingestion
-7. API and frontend
-8. experiments, docker, writeup
+3. lexical retrieval, and the ceiling it puts on accuracy              done
+4. evaluation harness and baselines                                    <- here
+5. hybrid retrieval and orchestrator
+6. verifier and abstention
+7. PDF ingestion
+8. API and frontend
+9. experiments, docker, writeup
 ```
 
 The engine replays the 883 gold programs in the dev split with no model involved, so a wrong answer
