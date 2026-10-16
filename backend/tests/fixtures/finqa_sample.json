@@ -1,0 +1,144 @@
+[
+  {
+    "pre_text": [
+      "The following table sets out selected consolidated statement of operations data for the fiscal years ended December 31, 2023 and 2022.",
+      "Operating income is presented in millions of dollars."
+    ],
+    "post_text": [
+      "Operating income for 2023 reflects higher revenue, partially offset by increased research and development expense."
+    ],
+    "table": [
+      ["", "2023", "2022"],
+      ["Operating income", "150", "120"],
+      ["Revenue", "900", "800"]
+    ],
+    "id": "SAMPLE/2023/page_10.pdf-1",
+    "qa": {
+      "question": "What was the change in operating income from 2022 to 2023?",
+      "program": "subtract(150, 120)",
+      "gold_inds": {
+        "table_0": "Operating income row, columns for 2023 and 2022"
+      },
+      "exe_ans": 30,
+      "program_re": "subtract(150, 120)"
+    }
+  },
+  {
+    "pre_text": [
+      "The following table sets out selected consolidated statement of operations data for the fiscal years ended December 31, 2023 and 2022."
+    ],
+    "post_text": [
+      "Revenue grew across all reporting segments."
+    ],
+    "table": [
+      ["", "2023", "2022"],
+      ["Operating income", "150", "120"],
+      ["Revenue", "900", "800"]
+    ],
+    "id": "SAMPLE/2023/page_10.pdf-2",
+    "qa": {
+      "question": "What was the growth rate in operating income from 2022 to 2023?",
+      "program": "divide(subtract(150, 120), 120)",
+      "gold_inds": {
+        "table_0": "Operating income row, columns for 2023 and 2022"
+      },
+      "exe_ans": 0.25,
+      "program_re": "divide(subtract(150, 120), 120)"
+    }
+  },
+  {
+    "pre_text": [
+      "The following table sets out selected consolidated statement of operations data for the fiscal years ended December 31, 2023 and 2022."
+    ],
+    "post_text": [
+      "Revenue grew across all reporting segments."
+    ],
+    "table": [
+      ["", "2023", "2022"],
+      ["Operating income", "150", "120"],
+      ["Revenue", "900", "800"]
+    ],
+    "id": "SAMPLE/2023/page_10.pdf-3",
+    "qa": {
+      "question": "By what percentage did operating income increase from 2022 to 2023?",
+      "program": "subtract(150, 120), divide(#0, 120), multiply(#1, 100)",
+      "gold_inds": {
+        "table_0": "Operating income row, columns for 2023 and 2022"
+      },
+      "exe_ans": 25,
+      "program_re": "multiply(divide(subtract(150, 120), 120), 100)"
+    }
+  },
+  {
+    "pre_text": [
+      "The table below summarises operating income across the two reported periods."
+    ],
+    "post_text": [
+      "The combined figure reflects both periods presented."
+    ],
+    "table": [
+      ["", "2023", "2022"],
+      ["Operating income", "150", "120"],
+      ["Revenue", "900", "800"]
+    ],
+    "id": "SAMPLE/2023/page_11.pdf-1",
+    "qa": {
+      "question": "What is the sum of operating income for 2022 and 2023?",
+      "program": "table_sum(operating income, none)",
+      "gold_inds": {
+        "table_0": "Operating income row"
+      },
+      "exe_ans": 270,
+      "program_re": "table_sum(operating income, none)"
+    }
+  },
+  {
+    "pre_text": [
+      "The following table sets out selected consolidated statement of operations data."
+    ],
+    "post_text": [
+      "Revenue is stated net of returns."
+    ],
+    "table": [
+      ["", "2023", "2022"],
+      ["Operating income", "150", "120"],
+      ["Revenue", "900", "800"]
+    ],
+    "id": "SAMPLE/2023/page_12.pdf-1",
+    "qa": {
+      "question": "Did operating income increase from 2022 to 2023?",
+      "program": "greater(150, 120)",
+      "gold_inds": {
+        "table_0": "Operating income row, columns for 2023 and 2022"
+      },
+      "exe_ans": "yes",
+      "program_re": "greater(150, 120)"
+    }
+  },
+  {
+    "pre_text": [
+      "The company reported the following results for the year.",
+      "Certain prior period amounts have been restated."
+    ],
+    "post_text": [
+      "Restated amounts reflect the correction described in note 4."
+    ],
+    "table": [
+      ["", "2023", "2022"],
+      ["Net income", "(1,234)", "2,500"],
+      ["Revenue", "$5,000", "4,800"],
+      ["Gross margin", "12.5%", "11.0%"],
+      ["Settlements", "-13 ( 13 )", "-19 ( 19 )"]
+    ],
+    "id": "SAMPLE/2023/page_20.pdf-1",
+    "qa": {
+      "question": "What was net income in 2023?",
+      "program": "table_max(net income, 2023)",
+      "gold_inds": {
+        "table_0": "Net income row, 2023 column"
+      },
+      "exe_ans": -1234,
+      "program_re": "table_max(net income, 2023)"
+    }
+  }
+]
