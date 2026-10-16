@@ -13,8 +13,11 @@ import httpx
 import pytest
 from app.core.config import Settings
 from app.services.llm import (
+    COMPATIBLE_ENDPOINTS,
+    MODEL_LIST_HINTS,
     BudgetExceeded,
     BudgetLedger,
+    Connection,
     FakeLLM,
     InvalidResponse,
     Message,
@@ -28,7 +31,9 @@ from app.services.llm import (
     Usage,
     build_provider,
     estimate_cost,
+    mask_key,
     price_for,
+    resolve_connection,
     system,
     user,
 )
@@ -112,6 +117,7 @@ def settings(**overrides) -> Settings:
         "llm_api_key": "",
         "openai_api_key": "",
         "groq_api_key": "",
+        "gemini_api_key": "",
         "cerebras_api_key": "",
         "openrouter_api_key": "",
     }
@@ -563,12 +569,25 @@ class TestFactory:
         expected = {
             "openai": "https://api.openai.com/v1",
             "groq": "https://api.groq.com/openai/v1",
+            "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
             "cerebras": "https://api.cerebras.ai/v1",
             "openrouter": "https://openrouter.ai/api/v1",
         }
         for name, base_url in expected.items():
             provider = build_provider(settings(llm_provider=name, llm_model="m", llm_api_key="k"))
             assert provider.base_url == base_url
+
+    def test_gemini_reaches_the_documented_chat_endpoint(self):
+        provider = build_provider(
+            settings(llm_provider="gemini", llm_model="gemini-3.8-flash", gemini_api_key="k")
+        )
+        assert provider._endpoint.endswith("/v1beta/openai/chat/completions")
+
+    def test_gemini_key_is_read_from_its_own_variable(self):
+        provider = build_provider(
+            settings(llm_provider="gemini", llm_model="m", gemini_api_key="AIzaSyExample")
+        )
+        assert provider.redacted_key == "****mple"
 
     def test_base_url_override_wins(self):
         provider = build_provider(
@@ -595,3 +614,48 @@ class TestFactory:
         assert provider.max_retries == 5
         assert provider.free_tier is False
         provider.close()
+
+
+class TestMaskKey:
+    def test_hides_everything_but_the_tail(self):
+        assert mask_key("gsk_abcdefgh1234") == "****1234"
+
+    def test_empty(self):
+        assert mask_key("") == "(unset)"
+
+
+class TestResolveConnection:
+    def test_resolves_endpoint_key_and_model(self):
+        connection = resolve_connection(
+            settings(llm_provider="gemini", llm_model="gemini-3.8-flash", gemini_api_key="k")
+        )
+        assert isinstance(connection, Connection)
+        assert connection.name == "gemini"
+        assert connection.model == "gemini-3.8-flash"
+        assert connection.base_url.startswith("https://generativelanguage")
+
+    def test_redacts_the_key(self):
+        connection = resolve_connection(
+            settings(llm_provider="gemini", llm_model="m", gemini_api_key="AIzaSecret999")
+        )
+        assert connection.redacted_key == "****t999"
+
+    def test_unknown_provider(self):
+        with pytest.raises(ProviderNotConfigured, match="unknown provider"):
+            resolve_connection(settings(llm_provider="nope"))
+
+    def test_fake_has_no_endpoint_to_resolve(self):
+        with pytest.raises(ProviderNotConfigured, match="offline"):
+            resolve_connection(settings(llm_provider="fake"))
+
+    def test_missing_key(self):
+        with pytest.raises(ProviderNotConfigured, match="needs an API key"):
+            resolve_connection(settings(llm_provider="gemini", llm_model="m"))
+
+    def test_missing_model_names_the_right_hint(self):
+        with pytest.raises(ProviderNotConfigured, match="aistudio.google.com"):
+            resolve_connection(settings(llm_provider="gemini", gemini_api_key="k"))
+
+    def test_every_compatible_provider_has_a_model_list_hint(self):
+        assert set(COMPATIBLE_ENDPOINTS) <= set(MODEL_LIST_HINTS)
+

@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     openai_api_key: str = ""
     groq_api_key: str = ""
+    gemini_api_key: str = ""
     cerebras_api_key: str = ""
     openrouter_api_key: str = ""
     llm_request_timeout_seconds: float = 60.0

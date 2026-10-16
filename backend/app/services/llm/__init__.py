@@ -17,7 +17,14 @@ from .errors import (
     ProviderUnavailable,
     ScriptExhausted,
 )
-from .factory import COMPATIBLE_ENDPOINTS, build_provider
+from .factory import (
+    COMPATIBLE_ENDPOINTS,
+    MODEL_LIST_HINTS,
+    Connection,
+    build_provider,
+    mask_key,
+    resolve_connection,
+)
 from .fake import FakeLLM
 from .openai_compatible import OpenAICompatibleProvider
 from .pricing import Price, estimate_cost, price_for
@@ -26,10 +33,12 @@ from .types import Completion, Message, Usage, assistant, system, user
 
 __all__ = [
     "COMPATIBLE_ENDPOINTS",
+    "MODEL_LIST_HINTS",
     "RUN_HALTING_ERRORS",
     "BudgetExceeded",
     "BudgetLedger",
     "Completion",
+    "Connection",
     "FakeLLM",
     "InvalidResponse",
     "LLMError",
@@ -47,7 +56,9 @@ __all__ = [
     "assistant",
     "build_provider",
     "estimate_cost",
+    "mask_key",
     "price_for",
+    "resolve_connection",
     "system",
     "user",
 ]
