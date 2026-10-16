@@ -118,6 +118,33 @@ class TestExecute:
         assert provider.call_count == 2, "the already-answered question is skipped"
         assert len(predictions) == 3
 
+    def test_a_failed_question_is_retried_on_resume(self, tmp_path):
+        """A provider hiccup is not an answer, so resuming must try it again."""
+        examples = [example(1, 100)]
+        path = tmp_path / "predictions.jsonl"
+        path.write_text(
+            json.dumps(
+                {
+                    "system": "direct@fake",
+                    "question_id": "DOC/1",
+                    "parsed": {"answer": None, "format": "unparsed", "raw": ""},
+                    "call_error": "ProviderUnavailable: 503 on attempt 4",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        provider = FakeLLM(responder=lambda messages: "ANSWER: 100")
+        predictions, halted = execute(
+            DirectLLM(provider), examples, path, budget=fresh_budget(tmp_path)
+        )
+
+        assert halted is None
+        assert provider.call_count == 1, "the failed question is worth another try"
+        assert predictions["DOC/1"]["call_error"] is None
+        assert predictions["DOC/1"]["parsed"]["answer"] == "100"
+
     def test_a_single_bad_question_does_not_stop_the_run(self, tmp_path):
         examples = [example(1, 100), example(2, 100)]
         path = tmp_path / "predictions.jsonl"
@@ -258,6 +285,33 @@ class TestScoring:
         assert summary["parse_failures"] == 1
         assert summary["parse_failure_rate"] == 1.0
 
+    def test_answers_cut_off_by_the_provider_are_counted(self, tmp_path):
+        """A truncated answer reads as a wrong one, so the count has to be visible."""
+        examples = [example(1, 100)]
+        path = tmp_path / "predictions.jsonl"
+        path.write_text(
+            json.dumps(
+                {
+                    "system": "direct@fake",
+                    "question_id": "DOC/1",
+                    "parsed": {"answer": None, "format": "unparsed", "raw": "the total is 1"},
+                    "finish_reason": "length",
+                    "total_tokens": 4096,
+                    "reasoning_tokens": 3980,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        summary = summarise(
+            score_all(examples, load_predictions(path), tolerance=1e-3)
+        )
+
+        assert summary["truncated"] == 1
+        assert summary["tokens"]["reasoning"] == 3980
+        assert summary["tokens"]["total"] == 4096
+
     def test_reference_kind_breakdown(self, tmp_path):
         examples = [example(1, 100), example(2, "yes", question="did it rise?")]
         path = tmp_path / "predictions.jsonl"
@@ -302,10 +356,11 @@ class TestReport:
             "parse_failures": 0,
             "parse_failure_rate": 0.0,
             "call_errors": 0,
+            "truncated": 0,
             "answer_formats": {},
             "outcomes": {},
             "latency_seconds": {"mean": 0.0, "p50": 0.0, "p95": 0.0, "total": 0.0},
-            "tokens": {"total": 0, "mean_per_question": 0.0},
+            "tokens": {"total": 0, "reasoning": 0, "mean_per_question": 0.0},
             "cost": {"total_usd": 0.0, "unpriced_questions": 0},
             "by_reference_kind": {},
         }

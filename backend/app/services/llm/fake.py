@@ -74,9 +74,12 @@ class FakeLLM:
         text = self._next(messages)
 
         prompt_text = "\n".join(message.content for message in messages)
+        prompt_tokens = estimate_tokens(prompt_text)
+        completion_tokens = estimate_tokens(text)
         usage = Usage(
-            prompt_tokens=estimate_tokens(prompt_text),
-            completion_tokens=estimate_tokens(text),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            reported_total=prompt_tokens + completion_tokens,
         )
         cost = (
             0.0
@@ -92,6 +95,7 @@ class FakeLLM:
             latency_seconds=0.0,
             attempts=1,
             cost_usd=cost,
+            finish_reason="stop",
         )
 
     @property

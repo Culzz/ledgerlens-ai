@@ -63,9 +63,21 @@ class Outcome:
     latency_seconds: float = 0.0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    total_tokens: int = 0
+    reasoning_tokens: int = 0
     cost_usd: float | None = None
     attempts: int = 1
     call_error: str | None = None
+    finish_reason: str | None = None
+
+    @property
+    def billed_tokens(self) -> int:
+        """The provider's own total when it gave one, otherwise the visible pair.
+
+        Reasoning tokens are billed but do not appear in the message, so trusting
+        prompt + completion alone understates a run on a model that thinks.
+        """
+        return self.total_tokens or (self.prompt_tokens + self.completion_tokens)
 
 
 def percentile(values: Iterable[float], fraction: float) -> float:
@@ -111,6 +123,7 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
         "parse_failures": n - len(parsed),
         "parse_failure_rate": round((n - len(parsed)) / n, 4),
         "call_errors": sum(1 for o in outcomes if o.call_error),
+        "truncated": sum(1 for o in outcomes if o.finish_reason == "length"),
         "outcomes": dict(sorted(by_outcome.items())),
         "answer_formats": dict(sorted(by_format.items())),
         "latency_seconds": {
@@ -122,10 +135,9 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
         "tokens": {
             "prompt": sum(o.prompt_tokens for o in outcomes),
             "completion": sum(o.completion_tokens for o in outcomes),
-            "total": sum(o.prompt_tokens + o.completion_tokens for o in outcomes),
-            "mean_per_question": round(
-                sum(o.prompt_tokens + o.completion_tokens for o in outcomes) / n, 1
-            ),
+            "reasoning": sum(o.reasoning_tokens for o in outcomes),
+            "total": sum(o.billed_tokens for o in outcomes),
+            "mean_per_question": round(sum(o.billed_tokens for o in outcomes) / n, 1),
         },
         "cost": {
             "total_usd": round(sum(o.cost_usd for o in priced), 6),
@@ -167,6 +179,7 @@ def render(summary: dict[str, Any], config: dict[str, Any], *, complete: bool) -
         f"percent-equivalent:  {summary['accuracy_percent_equivalent']:.4f}   (also accepts x100)",
         f"parse failures:      {summary['parse_failures']} ({summary['parse_failure_rate']:.4f})",
         f"call errors:         {summary['call_errors']}",
+        f"cut off by provider: {summary['truncated']}",
         "",
         "where the answer came from",
     ]
@@ -187,7 +200,12 @@ def render(summary: dict[str, Any], config: dict[str, Any], *, complete: bool) -
             "",
             f"latency:  mean {latency['mean']:.3f}s  p50 {latency['p50']:.3f}s  "
             + f"p95 {latency['p95']:.3f}s  total {latency['total']:.1f}s",
-            f"tokens:   {tokens['total']:,} total, {tokens['mean_per_question']} per question",
+            f"tokens:   {tokens['total']:,} total, {tokens['mean_per_question']} per question"
+            + (
+                f"  ({tokens['reasoning']:,} of them internal reasoning)"
+                if tokens["reasoning"]
+                else ""
+            ),
             f"cost:     ${cost['total_usd']:.4f}"
             + (f"  ({unpriced} questions had no known price)" if unpriced else ""),
         ]
@@ -230,6 +248,16 @@ def load_predictions(path: Path) -> dict[str, dict[str, Any]]:
     return records
 
 
+def is_answered(record: dict[str, Any] | None) -> bool:
+    """Whether a question has a usable answer already on disk.
+
+    A record whose call failed is not an answer. Treating it as one would freeze
+    a transient 429 or 503 into a permanent wrong answer, and on a metered free
+    tier that is a day of quota spent on a provider hiccup.
+    """
+    return bool(record) and record.get("call_error") is None
+
+
 def execute(
     system: System,
     examples: list[FinQAExample],
@@ -245,7 +273,7 @@ def execute(
     halt behaviour can be tested without a network or an API key.
     """
     predictions = load_predictions(predictions_path)
-    remaining = [e for e in examples if e.id not in predictions]
+    remaining = [e for e in examples if not is_answered(predictions.get(e.id))]
     if not remaining:
         return predictions, None
 
@@ -323,9 +351,12 @@ def score_all(
                 latency_seconds=record.get("latency_seconds", 0.0),
                 prompt_tokens=record.get("prompt_tokens", 0),
                 completion_tokens=record.get("completion_tokens", 0),
+                total_tokens=record.get("total_tokens", 0),
+                reasoning_tokens=record.get("reasoning_tokens", 0),
                 cost_usd=record.get("cost_usd"),
                 attempts=record.get("attempts", 1),
                 call_error=record.get("call_error"),
+                finish_reason=record.get("finish_reason"),
             )
         )
     return outcomes

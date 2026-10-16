@@ -38,6 +38,12 @@ RETRYABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 
 MAX_BACKOFF_SECONDS = 30.0
 
+# Where the wait starts. A 503 is usually a capacity spike that clears in
+# seconds, and a first retry of one second is spent inside the spike rather than
+# past it - three attempts then burn in under seven seconds and the run records a
+# failure that another moment would have answered.
+BASE_BACKOFF_SECONDS = 2.0
+
 
 def retry_after_seconds(response: httpx.Response) -> float | None:
     """Read a ``Retry-After`` header, if the provider sent a usable one.
@@ -191,7 +197,7 @@ class OpenAICompatibleProvider:
 
     def _backoff(self, attempt: int) -> float:
         """Exponential backoff with jitter, so concurrent runs do not sync up."""
-        ceiling = min(MAX_BACKOFF_SECONDS, 2.0 ** (attempt - 1))
+        ceiling = min(MAX_BACKOFF_SECONDS, BASE_BACKOFF_SECONDS * 2.0 ** (attempt - 1))
         return ceiling * (0.5 + 0.5 * self._jitter())
 
     def _parse(self, response: httpx.Response, *, started: float, attempt: int) -> Completion:
@@ -203,7 +209,8 @@ class OpenAICompatibleProvider:
             ) from exc
 
         try:
-            text = body["choices"][0]["message"]["content"]
+            choice = body["choices"][0]
+            text = choice["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise InvalidResponse(
                 f"{self.name} response had no choices[0].message.content: {_truncate(str(body))}"
@@ -215,11 +222,19 @@ class OpenAICompatibleProvider:
         usage = body.get("usage") or {}
         prompt_tokens = int(usage.get("prompt_tokens") or 0)
         completion_tokens = int(usage.get("completion_tokens") or 0)
+        reported_total = usage.get("total_tokens")
+        reported_total = int(reported_total) if reported_total is not None else None
+        total_tokens = (
+            reported_total if reported_total is not None else prompt_tokens + completion_tokens
+        )
+        # Reasoning tokens are charged as output. They are absent from the message,
+        # so billing off completion_tokens alone would understate a paid run.
+        billable_output = max(completion_tokens, total_tokens - prompt_tokens)
 
         if self.free_tier:
             cost: float | None = 0.0
         elif usage:
-            cost = estimate_cost(self.model, prompt_tokens, completion_tokens)
+            cost = estimate_cost(self.model, prompt_tokens, billable_output)
         else:
             # No usage block and no free-tier flag: we cannot claim this was free.
             cost = None
@@ -228,8 +243,13 @@ class OpenAICompatibleProvider:
             text=text,
             model=body.get("model") or self.model,
             provider=self.name,
-            usage=Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens),
+            usage=Usage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                reported_total=reported_total,
+            ),
             latency_seconds=round(self._clock() - started, 4),
             attempts=attempt,
             cost_usd=cost,
+            finish_reason=choice.get("finish_reason"),
         )

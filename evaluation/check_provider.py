@@ -30,12 +30,14 @@ from app.services.llm import (
 )
 
 # Recognisable starts, so an obviously wrong key is caught without a request.
-KEY_PREFIXES = {
-    "openai": "sk-",
-    "groq": "gsk_",
-    "gemini": "AIza",
-    "openrouter": "sk-or-",
-    "cerebras": "csk-",
+# Gemini lists two on purpose: AI Studio moved from the older "AIza" traffic keys
+# to the newer "AQ." authentication keys, and both kinds are in circulation.
+KEY_PREFIXES: dict[str, tuple[str, ...]] = {
+    "openai": ("sk-",),
+    "groq": ("gsk_",),
+    "gemini": ("AIza", "AQ."),
+    "openrouter": ("sk-or-",),
+    "cerebras": ("csk-",),
 }
 
 # Speech and safety models clutter the list and will never answer a question.
@@ -98,10 +100,11 @@ def check(settings: Settings) -> int:
     print(f"key:       {mask_key(connection.api_key)} ({len(connection.api_key)} characters)")
 
     expected = KEY_PREFIXES.get(provider_name)
-    if expected and not connection.api_key.startswith(expected):
+    if expected and not any(connection.api_key.startswith(p) for p in expected):
         print(
-            f"  warning: {provider_name} keys usually start with {expected!r}. "
-            f"this one does not, which may mean it came from somewhere else."
+            f"  warning: {provider_name} keys usually start with "
+            f"{' or '.join(expected)}. this one does not, which may mean it came "
+            f"from somewhere else."
         )
 
     print("\nlisting models...")
@@ -110,9 +113,10 @@ def check(settings: Settings) -> int:
     print("\nmaking one real call...")
     provider = build_provider(settings)
     try:
-        completion = provider.complete(
-            [user("Reply with the single word: ready")], max_tokens=64
-        )
+        # Deliberately no output cap. The current Gemini models spend their token
+        # budget on internal reasoning before emitting anything, so a small cap
+        # gets consumed there and the call comes back truncated with no content.
+        completion = provider.complete([user("Reply with the single word: ready")])
     except LLMError as exc:
         print(f"  FAILED  {type(exc).__name__}: {exc}")
         print(f"\n  if the model id is rejected, pick one from {MODEL_LIST_HINTS.get(provider_name, 'the provider docs')}")

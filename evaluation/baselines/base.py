@@ -27,10 +27,17 @@ class Prediction:
     model: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    # Total as the provider counted it, which for reasoning models is more than
+    # prompt + completion, plus the difference stated outright.
+    total_tokens: int = 0
+    reasoning_tokens: int = 0
     latency_seconds: float = 0.0
     cost_usd: float | None = None
     attempts: int = 1
     call_error: str | None = None
+    # "length" means the provider cut the answer off. Worth keeping, because a
+    # truncated answer looks like a wrong answer and nothing else would say so.
+    finish_reason: str | None = None
 
     @property
     def text(self) -> str:
@@ -65,10 +72,13 @@ class Prediction:
             model=record.get("model", ""),
             prompt_tokens=record.get("prompt_tokens", 0),
             completion_tokens=record.get("completion_tokens", 0),
+            total_tokens=record.get("total_tokens", 0),
+            reasoning_tokens=record.get("reasoning_tokens", 0),
             latency_seconds=record.get("latency_seconds", 0.0),
             cost_usd=record.get("cost_usd"),
             attempts=record.get("attempts", 1),
             call_error=record.get("call_error"),
+            finish_reason=record.get("finish_reason"),
         )
 
 

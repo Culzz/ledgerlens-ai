@@ -35,19 +35,37 @@ def assistant(content: str) -> Message:
 
 @dataclass(frozen=True)
 class Usage:
-    """Token counts as reported by the provider."""
+    """Token counts as reported by the provider.
+
+    ``reported_total`` is here because reasoning models bill for tokens that never
+    appear in the message. Gemini 3.x counts its internal thinking in
+    ``total_tokens`` while leaving ``completion_tokens`` at the visible count, so
+    adding those two fields together quietly understates both what a run cost and
+    how much of a daily quota it consumed.
+    """
 
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    reported_total: int | None = None
 
     @property
     def total_tokens(self) -> int:
+        if self.reported_total is not None:
+            return self.reported_total
         return self.prompt_tokens + self.completion_tokens
 
+    @property
+    def reasoning_tokens(self) -> int:
+        """Billed but never shown: whatever the total does not account for."""
+        return max(0, self.total_tokens - self.prompt_tokens - self.completion_tokens)
+
     def __add__(self, other: Usage) -> Usage:
+        # A sum can only claim a reported total when both sides had one.
+        totals = [u.reported_total for u in (self, other)]
         return Usage(
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
             completion_tokens=self.completion_tokens + other.completion_tokens,
+            reported_total=sum(totals) if all(t is not None for t in totals) else None,
         )
 
 
@@ -68,6 +86,9 @@ class Completion:
     latency_seconds: float = 0.0
     attempts: int = 1
     cost_usd: float | None = None
+    # Why the model stopped. "length" means the answer was cut off, which is the
+    # one failure that silently depresses accuracy if nothing records it.
+    finish_reason: str | None = None
 
     @property
     def prompt_tokens(self) -> int:

@@ -39,6 +39,8 @@ from app.services.llm import (
 )
 from app.services.llm.fake import estimate_tokens
 
+from evaluation.check_provider import KEY_PREFIXES
+
 # --- helpers -----------------------------------------------------------------
 
 
@@ -134,6 +136,27 @@ class TestTypes:
 
     def test_total_tokens(self):
         assert Usage(3, 4).total_tokens == 7
+
+    def test_reported_total_beats_the_visible_counts(self):
+        # A reasoning model bills for thinking that never reaches the message.
+        usage = Usage(prompt_tokens=100, completion_tokens=20, reported_total=900)
+        assert usage.total_tokens == 900
+        assert usage.reasoning_tokens == 780
+
+    def test_without_a_reported_total_the_visible_counts_are_summed(self):
+        usage = Usage(prompt_tokens=3, completion_tokens=4)
+        assert usage.total_tokens == 7
+        assert usage.reasoning_tokens == 0
+
+    def test_addition_keeps_a_reported_total_only_when_both_sides_have_one(self):
+        both = Usage(1, 1, reported_total=9) + Usage(1, 1, reported_total=10)
+        assert both.reported_total == 19
+        half = Usage(1, 1, reported_total=9) + Usage(1, 1)
+        assert half.reported_total is None
+
+    def test_reasoning_tokens_are_never_negative(self):
+        # Some providers report a total smaller than prompt + completion.
+        assert Usage(prompt_tokens=10, completion_tokens=10, reported_total=5).reasoning_tokens == 0
 
     def test_message_serialises_to_the_wire_shape(self):
         assert system("be brief").as_dict() == {"role": "system", "content": "be brief"}
@@ -394,6 +417,38 @@ class TestSuccessfulResponse:
         provider = make_provider(Responder([response]))
         assert provider.complete([user("q")]).cost_usd is None
 
+    def test_finish_reason_is_kept(self):
+        """It is the only signal that an answer was cut off rather than wrong."""
+        response = httpx.Response(
+            200,
+            json={
+                "model": "m",
+                "choices": [
+                    {"message": {"content": "the total is 1"}, "finish_reason": "length"}
+                ],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 700},
+            },
+        )
+        completion = make_provider(Responder([response])).complete([user("q")])
+        assert completion.finish_reason == "length"
+        assert completion.usage.total_tokens == 700
+        assert completion.usage.reasoning_tokens == 686
+
+    def test_reasoning_tokens_are_priced_as_output(self):
+        # 60k reasoning tokens, billed at gpt-4o-mini's $0.60 per million output.
+        response = httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"message": {"content": "1"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 60_000},
+            },
+        )
+        completion = make_provider(Responder([response]), model="gpt-4o-mini").complete(
+            [user("q")]
+        )
+        assert completion.cost_usd == pytest.approx(0.036)
+
 
 class TestRetries:
     def test_rate_limit_then_success(self):
@@ -420,7 +475,7 @@ class TestRetries:
         )
         make_provider(responder, sleeps=sleeps).complete([user("q")])
         # jitter is pinned to 1.0 in the helper, so the delays are the ceilings.
-        assert sleeps.delays == [1.0, 2.0]
+        assert sleeps.delays == [2.0, 4.0]
 
     def test_giving_up_on_rate_limits(self):
         responder = Responder([httpx.Response(429, json={})])
@@ -475,7 +530,7 @@ class TestRetries:
             [httpx.Response(429, json={}, headers={"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}), ok()]
         )
         make_provider(responder, sleeps=sleeps).complete([user("q")])
-        assert sleeps.delays == [1.0]
+        assert sleeps.delays == [2.0]
 
 
 class TestMalformedResponses:
@@ -658,4 +713,22 @@ class TestResolveConnection:
 
     def test_every_compatible_provider_has_a_model_list_hint(self):
         assert set(COMPATIBLE_ENDPOINTS) <= set(MODEL_LIST_HINTS)
+
+
+class TestKeyPrefixes:
+    """The diagnostic must not cry wolf about a key that is simply a new format."""
+
+    def test_every_provider_has_prefixes_to_check(self):
+        assert set(COMPATIBLE_ENDPOINTS) <= set(KEY_PREFIXES)
+
+    def test_prefixes_are_non_empty_strings(self):
+        for name, prefixes in KEY_PREFIXES.items():
+            assert prefixes, f"{name} has nothing to match against"
+            assert all(isinstance(prefix, str) and prefix for prefix in prefixes)
+
+    def test_gemini_accepts_both_key_formats(self):
+        # AI Studio issues "AQ." authentication keys now; "AIza" traffic keys came
+        # before, and both are still in circulation.
+        assert "AQ." in KEY_PREFIXES["gemini"]
+        assert "AIza" in KEY_PREFIXES["gemini"]
 

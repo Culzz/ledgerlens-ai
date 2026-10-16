@@ -20,6 +20,13 @@ from app.services.reasoning import parse_answer
 from .base import Prediction
 from .prompts import DIRECT_PROMPT_VERSION, build_direct_messages
 
+# Output ceiling per question, and it has to be roomy. Reasoning models spend
+# their internal working from the same budget before emitting anything, so a
+# tight cap truncates the answer mid-sentence and quietly costs accuracy. A run
+# that hits it is visible rather than silent: the provider comes back with
+# finish_reason "length", which the report counts.
+DEFAULT_MAX_TOKENS = 4096
+
 
 class DirectLLM:
     """The whole document in the prompt. The model does the arithmetic."""
@@ -31,7 +38,7 @@ class DirectLLM:
         provider: LLMProvider,
         *,
         temperature: float = 0.0,
-        max_tokens: int = 512,
+        max_tokens: int | None = DEFAULT_MAX_TOKENS,
     ) -> None:
         self.provider = provider
         self.temperature = temperature
@@ -69,7 +76,10 @@ class DirectLLM:
             model=completion.model,
             prompt_tokens=completion.prompt_tokens,
             completion_tokens=completion.completion_tokens,
+            reasoning_tokens=completion.usage.reasoning_tokens,
+            total_tokens=completion.usage.total_tokens,
             latency_seconds=completion.latency_seconds,
             cost_usd=completion.cost_usd,
             attempts=completion.attempts,
+            finish_reason=completion.finish_reason,
         )
