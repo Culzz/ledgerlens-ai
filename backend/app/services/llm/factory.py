@@ -113,7 +113,11 @@ def resolve_connection(settings: Settings) -> Connection:
 def build_provider(settings: Settings) -> LLMProvider:
     """Construct the provider named by ``LLM_PROVIDER``."""
     if (settings.llm_provider or "").strip().lower() == "fake":
-        return FakeLLM(model=settings.llm_model or "fake-model", free_tier=True)
+        # Deliberately not given LLM_MODEL. The offline provider answers with
+        # scripted or echoed text, so calling it "ministral-14b-2512" because
+        # that is what .env says would put a model name on answers it never
+        # produced - including in the health endpoint and the answer trail.
+        return FakeLLM(free_tier=True)
 
     connection = resolve_connection(settings)
 
