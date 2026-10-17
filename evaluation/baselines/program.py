@@ -17,6 +17,7 @@ from __future__ import annotations
 from app.services.dataset import FinQAExample
 from app.services.llm import RUN_HALTING_ERRORS, LLMError, LLMProvider
 from app.services.reasoning import (
+    DEFAULT_MAX_REPAIRS,
     FORMAT_JSON,
     FORMAT_UNEXECUTED,
     FORMAT_UNPARSED,
@@ -38,13 +39,30 @@ class ProgramLLM:
         top_k: int = 10,
         temperature: float = 0.0,
         max_tokens: int = 1024,
+        max_repairs: int = DEFAULT_MAX_REPAIRS,
+        enforce_grounding: bool = True,
     ) -> None:
         self.provider = provider
         self.orchestrator = Orchestrator(
-            provider, top_k=top_k, temperature=temperature, max_tokens=max_tokens
+            provider,
+            top_k=top_k,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_repairs=max_repairs,
+            enforce_grounding=enforce_grounding,
         )
-        self.name = f"program@{provider.name}"
+        # The configuration goes in the name, because two runs of "program" with
+        # different retry behaviour are different systems and a report that cannot
+        # tell them apart is not a report.
+        parts = ["program"]
+        if max_repairs:
+            parts.append(f"repair{max_repairs}")
+        if not enforce_grounding:
+            parts.append("nogate")
+        self.name = "+".join(parts) + f"@{provider.name}"
         self.prompt_version = self.orchestrator.prompt_version
+        self.max_repairs = max_repairs
+        self.enforce_grounding = enforce_grounding
 
     def answer(self, example: FinQAExample) -> Prediction:
         document = Document.from_example(example)
@@ -92,5 +110,20 @@ class ProgramLLM:
                 "failure": grounded.failure,
                 "citations": [citation.label for citation in grounded.citations],
                 "retrieval_fallback": grounded.retrieval_fallback,
+                # How many attempts the answer took, and what the grounding check
+                # made of it. Both are how the trust layer is counted rather than
+                # assumed: a repair that never fires and a check that never objects
+                # are indistinguishable from not having them.
+                "repair_count": len(grounded.repair_notes),
+                "repairs": list(grounded.repair_notes),
+                "grounding": (
+                    {
+                        "verdict": grounded.grounding.verdict,
+                        "unsourced": list(grounded.grounding.unsourced),
+                        "report_unit": grounded.grounding.report_unit,
+                    }
+                    if grounded.grounding is not None
+                    else None
+                ),
             },
         )

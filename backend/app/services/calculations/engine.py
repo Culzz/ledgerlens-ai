@@ -364,7 +364,7 @@ def default_table_resolver(table: Table, args: Sequence[Literal]) -> list[Decima
     values: list[Decimal] = []
     for cell in cells:
         try:
-            values.append(_parse_number(cell))
+            values.append(parse_number(cell))
         except InvalidArgument:
             continue
 
@@ -385,7 +385,7 @@ _DASHES = "\u2010\u2011\u2012\u2013\u2014\u2212"
 _FOOTNOTE = re.compile(r"^(.*?)\s*\(\s*[^()]*\s*\)\s*$")
 
 
-def _parse_number(text: str) -> Decimal:
+def parse_number(text: str) -> Decimal:
     """Parse a financial figure.
 
     Handles the shapes that actually turn up in these tables: ``1,234``,
@@ -397,6 +397,9 @@ def _parse_number(text: str) -> Decimal:
     applies to program literals too. Confirmed against the real dev split:
     ``multiply(25%, 5283.3)`` answers 1320.825, and the operating-margin row of
     AON/2014/page_47.pdf-1 averages to 0.08867 rather than 8.867.
+
+    Public because the reasoning layer needs the same reading of a cell as the
+    engine, and two implementations of "is this cell a number" would drift.
     """
     if text is None:
         raise InvalidArgument("cannot parse None as a number")
@@ -502,7 +505,7 @@ def _decimal(value: Any) -> Decimal:
     if isinstance(value, float):
         # str() first: Decimal(0.1) carries the binary error, Decimal("0.1") does not.
         return Decimal(str(value))
-    return _parse_number(value)
+    return parse_number(value)
 
 
 def _require_numeric(value: Any, operation: str) -> Decimal:
@@ -535,6 +538,12 @@ def _apply_numeric(op: str, args: Sequence[Decimal]) -> Decimal:
 _NUMERIC_OPS = {"add", "subtract", "multiply", "divide", "exp"}
 _TABLE_OPS = {"table_max", "table_min", "table_sum", "table_average"}
 
+# Public under a clearer name: these are the operations whose arguments are row
+# and column *labels*, not figures, and anything reading a program has to know
+# which is which. The grounding check cares most - it must not treat the words
+# "total obligations" as a number to be traced back to the report.
+TABLE_OPERATIONS = frozenset(_TABLE_OPS)
+
 
 def execute_program(
     program: str,
@@ -561,7 +570,7 @@ def execute_program(
                         f"#{idx} referenced before it exists (only {len(results)} step(s) so far)"
                     )
                 return results[idx]
-            return _parse_number(node.text)
+            return parse_number(node.text)
 
         # Call
         op = node.name
@@ -660,7 +669,7 @@ def answers_match(
 
 def _looks_numeric(value: str) -> bool:
     try:
-        _parse_number(value)
+        parse_number(value)
     except InvalidArgument:
         return False
     return True

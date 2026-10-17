@@ -1,0 +1,17 @@
+{
+  "system": "program+repair1@mistral",
+  "provider": "mistral",
+  "model": "ministral-14b-2512",
+  "split": "data/finqa/dev.json",
+  "split_records": 883,
+  "prompt_version": "program-v3",
+  "tolerance": 0.001,
+  "limit": null,
+  "free_tier": true,
+  "max_retries": 4,
+  "temperature": null,
+  "max_repairs": 1,
+  "enforce_grounding": true,
+  "generated_at": "2026-10-17T13:27:28+00:00",
+  "budget_limit_usd": 25.0
+}

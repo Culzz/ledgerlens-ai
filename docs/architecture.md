@@ -28,9 +28,9 @@ never supplies a number and never runs code.
                                  ▼
                     ┌────────────────────────┐
                     │ hybrid retrieval       │
-                    │ keyword (FTS/BM25)     │
-                    │ + embeddings (pgvector)│
-                    │ + optional rerank      │
+                    │ keyword (BM25, built)  │
+                    │ + dense (planned)      │
+                    │ + rerank (planned)     │
                     └────────────┬───────────┘
                                  ▼
                     ┌────────────────────────┐
@@ -47,14 +47,23 @@ never supplies a number and never runs code.
                                  ▼
                     ┌────────────────────────┐
                     │ verifier               │
-                    │ do citations exist? do │
-                    │ figures match? is the  │
-                    │ arithmetic sound? if    │
-                    │ not, abstain           │
+                    │ is every figure in the │
+                    │ plan one the report    │
+                    │ states? if none is,    │
+                    │ refuse and say so      │
                     └────────────┬───────────┘
                                  ▼
                         answer + evidence + trace
 ```
+
+Two things in that drawing are decisions rather than placeholders. The dense leg is TF-IDF followed
+by truncated SVD, run in-process, not a vector database: the dev split is 26,834 evidence units, where
+an exact search costs milliseconds and a server costs a deployment. The verifier checks figures rather
+than whole answers, and it checks them against the entire report rather than the retrieved rows,
+because a retrieval miss must not read as an invention.
+
+Only the keyword leg is built. Everything else on the product track is the plan, and the model card
+says which parts exist.
 
 ## Two layers of calculation
 
@@ -107,6 +116,10 @@ natural-language component exists. That's the order this gets built in.
 | api | FastAPI routes, typed schemas, auth, job status | 6 |
 | frontend | React workspace | 6 |
 
+The milestone column is the order these were planned in, written before any of it existed. For what
+actually exists today the parts table in `model_card.md` is the one that is kept current, because a
+plan is allowed to be optimistic and a parts table is not.
+
 ## Answering a benchmark question
 
 1. Load the example by id. Splits stay as published.
@@ -116,8 +129,13 @@ natural-language component exists. That's the order this gets built in.
 5. Validate the plan. Identifiers have to resolve to retrieved evidence, and periods and units have
    to be compatible.
 6. Run it on the calculation engine, get a value and a trace.
-7. Verify. Cited evidence exists, operands match extracted values, arithmetic is sound.
-8. Return the answer with citations and trace, or abstain and say why.
+7. Check the trace. Every figure in the program is looked up in the whole report and classified as a
+   figure the report states, an arithmetic constant, or neither. The citation list the model wrote is
+   compared against the rows the figures were actually found in.
+8. Return the answer with citations and an audit trail, or refuse when no figure in the program has a
+   home in the report.
+9. If the program would not run, or the check refused it, send the engine's reason back to the model
+   once and run whatever comes back. That is the whole repair mechanism: one round, no arguing.
 
 ## Answering a product question
 
@@ -126,7 +144,12 @@ passages carry page and section metadata so the citations are clickable.
 
 ## Storage
 
-PostgreSQL, with pgvector for embeddings and full-text search for keywords.
+PostgreSQL, with full-text search for keywords and a vector extension for embeddings.
+
+That is the plan for the product track, and none of it is built. The benchmark track needs no database
+at all: FinQA is 883 records read from one JSON file, retrieval is an in-process BM25 index over
+26,834 units, and nothing is persisted between runs. A vector index was considered for the dense leg
+and rejected at this size — an exact in-process search is faster than the round trip to a server.
 
 | Table | Holds |
 |---|---|

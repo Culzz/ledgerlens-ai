@@ -1,0 +1,15 @@
+{
+  "system": "program@mistral",
+  "provider": "mistral",
+  "model": "ministral-14b-2512",
+  "split": "data/finqa/dev.json",
+  "split_records": 883,
+  "prompt_version": "program-v3",
+  "tolerance": 0.001,
+  "limit": 883,
+  "free_tier": true,
+  "max_retries": 4,
+  "temperature": null,
+  "generated_at": "2026-10-16T16:58:03+00:00",
+  "budget_limit_usd": 25.0
+}

@@ -1,0 +1,12 @@
+{
+  "split": "data\\finqa\\dev.json",
+  "retriever": "BM25(k1=1.5, b=0.75)",
+  "ks": [
+    1,
+    3,
+    5,
+    10
+  ],
+  "ground_truth": "qa.ann_table_rows + qa.ann_text_rows",
+  "scope": "within the question's own document"
+}

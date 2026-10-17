@@ -1,0 +1,61 @@
+{
+  "n": 883,
+  "correct": 291,
+  "accuracy": 0.3296,
+  "accuracy_percent_equivalent": 0.5051,
+  "parse_failures": 0,
+  "parse_failure_rate": 0.0,
+  "unexecuted": 76,
+  "unanswered": 76,
+  "unanswered_rate": 0.0861,
+  "call_errors": 0,
+  "truncated": 4,
+  "outcomes": {
+    "correct": 291,
+    "correct_percent_equivalent": 155,
+    "unexecuted": 76,
+    "wrong_number": 361
+  },
+  "answer_formats": {
+    "json": 807,
+    "unexecuted": 76
+  },
+  "latency_seconds": {
+    "mean": 2.4295,
+    "p50": 2.046,
+    "p95": 3.9173,
+    "total": 2145.248
+  },
+  "tokens": {
+    "prompt": 866750,
+    "completion": 87839,
+    "reasoning": 0,
+    "total": 954589,
+    "mean_per_question": 1081.1
+  },
+  "cost": {
+    "total_usd": 0.0,
+    "priced_questions": 883,
+    "unpriced_questions": 0
+  },
+  "by_reference_kind": {
+    "number": {
+      "n": 873,
+      "accuracy": 0.3242
+    },
+    "text": {
+      "n": 10,
+      "accuracy": 0.8
+    }
+  },
+  "budget": {
+    "calls": 2070,
+    "prompt_tokens": 2216629,
+    "completion_tokens": 163751,
+    "total_tokens": 2380380,
+    "spent_usd": 0.0,
+    "limit_usd": 25.0,
+    "remaining_usd": 25.0,
+    "unpriced_calls": 0
+  }
+}

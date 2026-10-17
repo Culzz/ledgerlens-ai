@@ -12,11 +12,21 @@ and never gets to supply a number.
 ## Status
 
 The dataset loader, the calculation engine, the retrieval measurement, the evaluation harness, two
-baselines, the API and the frontend are in. Verification and PDF ingestion are not — see the Plan.
+baselines, the API, the frontend and the verification layer are in. PDF ingestion is not — see the
+Plan.
+
+Every figure in a written program is looked up in the report before the answer is shown, against the
+whole document rather than the retrieved rows. A program built entirely out of figures the report does
+not state is refused instead of answered, and a program that will not run goes back to the model once
+with the engine's reason. That check was measured before it was trusted: on the live run it refused 39
+answers, and all 39 were already wrong.
 
 The engine replays all 883 gold programs in FinQA's dev split exactly, with no model involved. That is
 a check on the engine and not on a model, and it is what makes every number further down attributable:
 a wrong answer from here on is a retrieval or reasoning problem, not an arithmetic one.
+
+Run: `2026-10-16T16-15-30_replay_dev` — 883 of 883 matched, 0 mismatched, 0 errors. Its `metrics.json`
+is committed.
 
 The model layer is provider-neutral and `LLM_PROVIDER` defaults to `fake`, which answers offline with
 no key and no spend. That is how the harness, its resume behaviour and its error handling are tested.
@@ -29,10 +39,14 @@ python -m evaluation.check_provider
 python -m evaluation.run_eval            --split data/finqa/dev.json --system program --limit 150
 python -m evaluation.review_run          evaluation/reports/<run-directory>
 python -m evaluation.compare_runs        evaluation/reports/<run-a> evaluation/reports/<run-b>
+python -m evaluation.audit_grounding     evaluation/reports/<run-directory>
 ```
 
 `check_provider` spends one request to confirm the key and the model work, which is cheaper than
 finding out forty minutes into a run.
+
+`audit_grounding` replays a finished run's stored replies through the verification check. It spends
+nothing, because it calls no model, and it is how the check was measured before it was trusted.
 
 ## Results
 
@@ -47,11 +61,18 @@ evidence, or the reference answer.
 | ---- | ---- | ---- | ---- |
 | A — the whole document in the prompt | 0.2231 | 0.5108 | 0 |
 | D — retrieve, then write a program | 0.3296 | 0.5051 | 76 |
+| E — D, plus the figure check and one repair pass | 0.3488 | 0.5345 | 78 |
 
 `strict` is FinQA's own rule and the headline: the answer matches the reference to within 1e-3.
 `percent-equivalent` additionally accepts an answer a hundred times the reference, because FinQA
 stores some percentages as fractions and a model that writes "93.5" for 0.935 is not always wrong.
 It is a diagnostic, not a second headline, and it is only loosened in that one direction.
+
+Each row is a directory under `evaluation/reports/`: `2026-10-16T15-09-40_direct@mistral_dev` for A,
+`2026-10-16T16-15-45_program@mistral_dev` for D, `2026-10-17T11-25-38_program+repair1@mistral_dev`
+for E. `config.json` and `metrics.json` are committed for each of them, so a number quoted here can be
+checked against the run that produced it. The per-question predictions are not committed, because they
+are large and working data.
 
 **Strict is the column that moved.** Making the engine do the arithmetic and the model write a program
 is worth 10.7 points — same questions, same model. Paired over all 883, D answers 163 questions A
@@ -78,6 +99,31 @@ still lands at a third. What is left is evidence selection and notation, not ari
 argument for the retrieval and verification milestones, and against swapping in a bigger model and
 calling the problem solved.
 
+**The trust layer, and how much of it is real.** E is D plus the figure check and one repair pass:
+17 questions better on strict, 26 on percent-equivalent. Most of that is not the trust layer, and the
+data says so rather than leaving it to a reader to wonder.
+
+The repair loop only touches a question whose *first* attempt fails, so the 775 questions where it
+never fired took the identical code path in both runs. On those the answer moved from wrong to right
+34 times and from right to wrong 26 times. **Unchanged code moves by about ±30 questions out of 883**,
+so a 17-question difference is inside the noise — and 30 of those 60 flips are the strict-versus-percent
+convention, where the same question comes back as `93.5` in one run and `0.935` in the next.
+
+What can be attributed is the population the feature touched. The loop fired on 108 questions (12.2%):
+10 ended correct where D had been wrong or silent, 1 ended wrong where D had been right. That is a net
+of +9, about a point, and it is the honest size of the feature. It costs a second model call on those
+108 questions, and that is where E's 14.9% token increase comes from.
+
+**The check cost nothing.** E refused 39 answers, and none of the 39 was right in D — all 39 were
+already wrong. That was the measurement the check had to pass before it shipped, and it passed it live
+rather than only in a replay.
+
+**What the failures look like.** The 108 questions that reached the repair loop are mostly malformed
+replies rather than subtly wrong reasoning: a reply carrying no program, `unexpected end of program in
+'null'`, or a program built entirely from `0`. That is the honest shape of the remaining error, and it
+says the next useful work is making the model produce a well-formed program at all, not making the
+arithmetic better.
+
 ### Retrieval
 
 BM25 over 26,834 evidence units, dev split, 818 questions carrying annotations:
@@ -92,10 +138,41 @@ BM25 over 26,834 evidence units, dev split, 818 questions carrying annotations:
 `complete@k` is the share of questions where *all* the evidence a question needs is inside the top
 k, so it caps end-to-end accuracy for anything that reads only those k units.
 
+Run: `2026-10-16T11-57-33_retrieval_ceiling_dev` — `BM25(k1=1.5, b=0.75)`, 26,834 units, 818
+questions scored, 65 with no annotated evidence. Its `config.json` and `metrics.json` are committed.
+
 A useful thing fell out of that number. FinQA documents are small — a few table rows and a couple of
 dozen narrative lines — so a prompt containing the whole document already contains the evidence. On
 this benchmark retrieval is not the bottleneck; the reasoning is. Retrieval and citation are what
 the product needs, and FinQA cannot tell you whether they work.
+
+### Verification
+
+Every figure in a program is classified against the whole report: one the report states, arithmetic
+the model wrote itself, or neither. That last group is what the check is for, and it can be measured
+with no model at all by replaying a finished run's replies.
+
+| run D, 883 replies | |
+| ---- | ---- |
+| `grounded` | 692 |
+| `partly_grounded` | 73 |
+| `ungrounded`, refused | 42 |
+| no program to check | 76 |
+| correct answers, check off | 291 of 883 |
+| correct answers, check on | 291 of 883 |
+| refused answers that were right | 0 |
+| refused answers that were already wrong | 42 |
+
+The check costs nothing in accuracy on this split, and it removes 42 wrong answers. 26 of the 42 are
+one behaviour: a program written entirely out of `0`, which runs cleanly and means nothing.
+
+The 73 `partly_grounded` answers are the more interesting group and they are not refused. An answer
+resting on one figure the report does not state is a weaker answer, not an invented one — 10 of the 73
+were right. The audit trail names the figure either way, so a reader can see which one it was.
+
+This bounds the check, not the repair loop standing next to it. A refused program goes back to the
+model once with the engine's reason, and a replay of stored replies never sees the second attempt. Run
+E is that live measurement, and it puts the same number on the check: 39 refusals, none of them right.
 
 ### Reading these numbers
 
@@ -202,18 +279,28 @@ rate limit rather than spending through one.
 3. lexical retrieval, and the ceiling it puts on accuracy              done
 4. evaluation harness and baselines                                    done
 5. orchestrator: retrieve the evidence, then write a program           done
-6. verifier and abstention                                             <- here
+6. verification: check the figures, refuse what has no home, repair a  done
+   program that will not run
 7. hybrid retrieval and reranking
 8. PDF ingestion
 9. API and frontend                                                    done
 10. experiments and writeup
 ```
 
-Two things the results above make obvious, and they are the next two things. The 76 unexecutable
-replies: a reply that cannot be turned into a program should come back as a refusal with a reason
-rather than as a failure, which is what milestone 6 is for. And retrieval is measured but not
-improved — milestone 7 is the hybrid pass, and since the ceiling says retrieval is not what is
-holding the benchmark back, that will be reported as a retrieval metric and not as an accuracy claim.
+The 76 unexecutable replies are what milestone 6 was for, and the check above is half of it. A program
+that will not run, and a program whose figures have no home in the report, both go back to the model
+once with the engine's reason attached — one round, no arguing. It is measured now, in run E, and the
+measurement is less flattering than the feature: it fires on 108 questions and fixes 9 of them.
+
+The obvious next step is not another feature but a better measurement. ±30 questions is too wide to
+see a nine-question effect, and that number comes from comparing two runs of the same configuration.
+Repeating D on a second day, and running a subset of the split several times, would put a real band
+around every later claim instead of a plausible one. Quota on a free tier is what makes that a plan
+rather than a paragraph.
+
+Retrieval is measured but not improved, and milestone 7 is the hybrid pass. Since the ceiling says
+retrieval is not what is holding the benchmark back, that will be reported as a retrieval metric and
+not as an accuracy claim.
 
 ## What this isn't
 

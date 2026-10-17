@@ -38,13 +38,54 @@ export interface Evidence {
   cited: boolean;
 }
 
+// What one argument of a step turned out to be. A sourced figure cites the rows
+// it was read from; an unsourced one is the reason an answer gets refused.
+export type OperandRole =
+  | "sourced"
+  | "constant"
+  | "unsourced"
+  | "reference"
+  | "label"
+  | "nested";
+
+export interface Operand {
+  text: string;
+  role: OperandRole;
+  value: string | null;
+  labels: string[];
+}
+
+export interface AuditStep {
+  index: number;
+  operation: string;
+  result: string;
+  /** The step as one line, each figure annotated with where it came from. */
+  render: string;
+  operands: Operand[];
+}
+
+export interface Audit {
+  verdict: "grounded" | "partly_grounded" | "ungrounded";
+  labels: string[];
+  /** Figures the report does not state, as the program wrote them. */
+  unsourced: string[];
+  sourced_count: number;
+  literal_count: number;
+  constant_only: boolean;
+  /** What the report said its figures were in, when it said. */
+  report_unit: string | null;
+  steps: AuditStep[];
+}
+
 export interface Answer {
   question: string;
   answer: string | null;
   program: string | null;
-  steps: string[];
+  audit: Audit | null;
   failure: string | null;
   evidence: Evidence[];
+  /** How many times a failed program was sent back before this answer. */
+  repair_count: number;
   retrieval_fallback: boolean;
   provider: string;
   model: string | null;

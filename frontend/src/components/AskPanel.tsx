@@ -83,7 +83,9 @@ export default function AskPanel({ report, answer, busy, offline, onSubmit, onBr
             </div>
           )}
 
-          {!busy && answer && <AnswerCard answer={answer} offline={offline} />}
+          {!busy && answer && (
+            <AnswerCard answer={answer} source={report.filename} offline={offline} />
+          )}
 
           {!busy && !answer && (
             <>

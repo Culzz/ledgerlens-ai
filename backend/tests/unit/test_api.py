@@ -111,10 +111,86 @@ class TestAsk:
 
         assert body["answer"] == "30"
         assert body["program"] == "subtract(150, 120)"
-        assert body["steps"] == ["#0 = subtract(150, 120) = 30"]
         assert body["failure"] is None
         assert body["provider"] == "scripted"
         assert body["model"] == "scripted-model"
+        assert body["repair_count"] == 0
+
+    def test_the_audit_trail_says_where_each_figure_came_from(self, client):
+        body = client.post(
+            "/api/ask",
+            json={"document_id": DOCUMENT, "question": "What was the change in operating income?"},
+        ).json()
+
+        audit = body["audit"]
+        assert audit["verdict"] == "grounded"
+        assert audit["labels"] == ["table_1"]
+        assert audit["unsourced"] == []
+        assert audit["steps"] == [
+            {
+                "index": 0,
+                "operation": "subtract",
+                "result": "30",
+                "render": "#0 = subtract(150 [table_1], 120 [table_1]) = 30",
+                "operands": [
+                    {
+                        "text": "150 [table_1]",
+                        "role": "sourced",
+                        "value": "150",
+                        "labels": ["table_1"],
+                    },
+                    {
+                        "text": "120 [table_1]",
+                        "role": "sourced",
+                        "value": "120",
+                        "labels": ["table_1"],
+                    },
+                ],
+            }
+        ]
+
+    def test_an_invented_figure_is_refused_and_says_so(self, client, monkeypatch):
+        # None of these figures is in the report - not 150, not the table. The
+        # arithmetic is fine and every input is made up, which is the one failure
+        # the engine alone cannot see.
+        monkeypatch.setattr(
+            ask_routes,
+            "get_orchestrator",
+            lambda: Orchestrator(ScriptedProvider("subtract(998, 999)"), max_repairs=0),
+        )
+
+        body = client.post(
+            "/api/ask",
+            json={"document_id": DOCUMENT, "question": "What was the change in operating income?"},
+        ).json()
+
+        assert body["answer"] is None
+        assert body["failure"].startswith("UngroundedAnswer")
+        # The trail is still there. It is the reason there is no answer, so hiding
+        # it would hide the explanation.
+        assert body["audit"]["verdict"] == "ungrounded"
+        assert body["audit"]["unsourced"] == ["998", "999"]
+
+    def test_a_figure_the_report_does_not_state_alone_does_not_refuse_the_answer(
+        self, client, monkeypatch
+    ):
+        # 999 is nowhere in the report and 150 is in it. One unreadable figure is a
+        # weaker answer rather than an invented one, so the answer stands and the
+        # trail says which figure was the weak point.
+        monkeypatch.setattr(
+            ask_routes,
+            "get_orchestrator",
+            lambda: Orchestrator(ScriptedProvider("subtract(150, 999)"), max_repairs=0),
+        )
+
+        body = client.post(
+            "/api/ask",
+            json={"document_id": DOCUMENT, "question": "What was the change in operating income?"},
+        ).json()
+
+        assert body["answer"] == "-849"
+        assert body["audit"]["verdict"] == "partly_grounded"
+        assert body["audit"]["unsourced"] == ["999"]
 
     def test_the_evidence_marks_what_the_answer_rested_on(self, client):
         body = client.post(

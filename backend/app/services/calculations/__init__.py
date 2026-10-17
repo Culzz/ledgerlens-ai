@@ -1,6 +1,7 @@
 from .engine import (
     GREATER_FALSE,
     GREATER_TRUE,
+    TABLE_OPERATIONS,
     CalculationError,
     CalculationTrace,
     Call,
@@ -13,12 +14,14 @@ from .engine import (
     answers_match,
     default_table_resolver,
     execute_program,
+    parse_number,
     parse_program,
 )
 
 __all__ = [
     "GREATER_FALSE",
     "GREATER_TRUE",
+    "TABLE_OPERATIONS",
     "CalculationError",
     "CalculationTrace",
     "Call",
@@ -31,5 +34,6 @@ __all__ = [
     "answers_match",
     "default_table_resolver",
     "execute_program",
+    "parse_number",
     "parse_program",
 ]

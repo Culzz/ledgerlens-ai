@@ -25,7 +25,7 @@ from app.services.calculations import (
     execute_program,
     parse_program,
 )
-from app.services.calculations.engine import _parse_number
+from app.services.calculations.engine import parse_number
 
 TABLE = (
     ("", "2023", "2022"),
@@ -300,11 +300,11 @@ class TestNumberParsing:
         ],
     )
     def test_parses_financial_shapes(self, text, expected):
-        assert _parse_number(text) == expected
+        assert parse_number(text) == expected
 
     def test_percent_means_a_fraction(self):
         # multiply(25%, 5283.3) answers 1320.825 in the real data, so 25% is 0.25.
-        assert _parse_number("25%") == Decimal("0.25")
+        assert parse_number("25%") == Decimal("0.25")
 
     def test_percent_literals_in_programs(self):
         assert execute_program("multiply(526.5, 2.4%)").result == Decimal("12.636")
@@ -327,7 +327,7 @@ class TestNumberParsing:
     )
     def test_unparseable_values_raise(self, bad):
         with pytest.raises(InvalidArgument):
-            _parse_number(bad)
+            parse_number(bad)
 
 
 class TestAnswerMatching:

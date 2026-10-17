@@ -51,6 +51,48 @@ class EvidenceOut(BaseModel):
     cited: bool
 
 
+class OperandOut(BaseModel):
+    """One argument of a step, and where its number came from."""
+
+    text: str
+    # reference | label | sourced | constant | unsourced | nested. The UI says
+    # different things for each: a sourced figure cites a row, an unsourced one is
+    # the reason an answer was refused.
+    role: str
+    value: str | None = None
+    # The units of the report that state this figure. Empty for anything that is
+    # not a sourced figure.
+    labels: list[str] = []
+
+
+class AuditStepOut(BaseModel):
+    index: int
+    operation: str
+    result: str
+    # The step as one line, with each figure annotated. The same text the engine
+    # prints, plus citations.
+    render: str
+    operands: list[OperandOut] = []
+
+
+class GroundingOut(BaseModel):
+    """The answer to "did these numbers come from the report"."""
+
+    # grounded | partly_grounded | ungrounded. Anything but the first is worth
+    # showing; the third is why an answer was refused.
+    verdict: str
+    labels: list[str] = []
+    # Figures the report does not state, as the program wrote them.
+    unsourced: list[str] = []
+    sourced_count: int = 0
+    literal_count: int = 0
+    constant_only: bool = False
+    # What the report said its figures were in, when it said. Shown so a reader can
+    # see why a figure written out in full still matched.
+    report_unit: str | None = None
+    steps: list[AuditStepOut] = []
+
+
 class AskRequest(BaseModel):
     document_id: str = Field(min_length=1, max_length=200)
     question: str = Field(min_length=1, max_length=600)
@@ -61,10 +103,14 @@ class AskResponse(BaseModel):
     # The engine's result, or null. Never a number taken from the model's reply.
     answer: str | None
     program: str | None
-    steps: list[str]
+    # Where every figure in that program came from. Present whenever a program ran,
+    # including when this is the reason there is no answer.
+    audit: GroundingOut | None
     failure: str | None
     evidence: list[EvidenceOut]
-    # The unit ids the program's steps were checked against, for the UI to link.
+    # How many times a failed program was sent back before this answer. Zero is the
+    # common case; anything else means the first attempt did not run.
+    repair_count: int
     retrieval_fallback: bool
     provider: str
     model: str | None

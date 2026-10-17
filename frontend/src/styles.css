@@ -55,6 +55,12 @@
   --cited: #fbf3d6;
   --cited-rule: #e5d6a3;
 
+  /* Two colours the palette did not have: one for a check that passed, one for a
+     figure the report does not state. Kept apart from --accent so that an
+     ungrounded figure and an ordinary link never read as the same thing. */
+  --verified: #45634a;
+  --caution: #8a6a1f;
+
   --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --serif: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
   --mono: "Spline Sans Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -865,10 +871,10 @@ table.statement tr:last-child td {
   border-radius: var(--radius);
 }
 
-/* Room on the right for the copy button, which floats over the first line. */
+/* Room on the right for the two copy buttons, which float over the first line. */
 .program pre {
   margin: 0;
-  padding: 12px 46px 12px 13px;
+  padding: 12px 82px 12px 13px;
   overflow-x: auto;
   font-family: var(--mono);
   font-size: 12.5px;
@@ -877,10 +883,16 @@ table.statement tr:last-child td {
   white-space: pre;
 }
 
-.copy {
+.program-tools {
   position: absolute;
   top: 6px;
   right: 6px;
+  display: flex;
+  gap: 2px;
+}
+
+.copy {
+  position: relative;
   display: grid;
   place-items: center;
   width: 34px;
@@ -904,26 +916,231 @@ table.statement tr:last-child td {
   border-color: var(--rule-strong);
 }
 
-.steps {
-  margin-top: 2px;
-  border-top: 1px solid var(--rule);
+/* --- trust, and the audit trail --------------------------------------------
+   The answer above is one figure. Everything here exists so a reader who does
+   not believe that figure can find out where every input to it came from. A
+   reader who does believe it never opens this, which is why the trail folds
+   away and the verdict does not. */
+
+.trust {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 15px;
 }
 
-.steps li {
-  display: grid;
-  grid-template-columns: 2.4em minmax(0, 1fr);
-  gap: 10px;
-  padding: 7px 0;
+.trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid currentColor;
+  border-radius: 100px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The badge takes the tone's colour; the sentence beside it stays ordinary ink
+   unless the check failed, because a passed check has nothing to warn about. */
+.trust[data-tone="good"] .trust-badge {
+  color: var(--verified);
+}
+
+.trust[data-tone="warn"] .trust-badge {
+  color: var(--caution);
+}
+
+.trust[data-tone="bad"] {
+  color: var(--accent);
+}
+
+.trust-detail {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.trust[data-tone="bad"] .trust-detail {
+  color: var(--accent);
+}
+
+.audit {
+  margin-top: 10px;
+}
+
+.audit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.audit-toggle:hover .caret {
+  border-color: var(--ink);
+}
+
+.caret {
+  transition: transform 120ms ease;
+}
+
+.caret.is-open {
+  transform: rotate(180deg);
+}
+
+.audit-summary {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  text-align: right;
+}
+
+.audit-body {
+  padding: 2px 0 10px;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.audit-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-faint);
+}
+
+.audit-steps {
+  margin-top: 10px;
+  list-style: none;
+}
+
+/* The operation and its arguments wrap as a unit, so a long step breaks between
+   arguments rather than inside one. */
+.audit-steps li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 7px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--rule-soft);
   font-family: var(--mono);
   font-size: 12px;
   color: var(--ink-soft);
-  overflow-wrap: anywhere;
 }
 
-.steps li .idx {
+.audit-steps li:last-child {
+  border-bottom: 0;
+}
+
+.audit-steps .idx {
   color: var(--ink-faint);
-  text-align: right;
+}
+
+.audit-steps .op {
+  color: var(--ink);
+}
+
+.audit-steps .eq {
+  color: var(--ink-faint);
+}
+
+.audit-steps .res {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.audit-steps .args {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+}
+
+.arg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* A figure the report states is marked the same way a cited row is marked in the
+   evidence list, because it is the same claim. */
+.arg-chip[data-role="sourced"] {
+  color: var(--ink);
+}
+
+.arg-chip[data-role="constant"] {
+  color: var(--ink-faint);
+}
+
+.arg-chip[data-role="unsourced"] {
+  color: var(--accent);
+  text-decoration: underline wavy var(--accent);
+  text-underline-offset: 3px;
+}
+
+.arg-chip[data-role="label"],
+.arg-chip[data-role="reference"] {
+  color: var(--ink-faint);
+}
+
+.arg-cite {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.arg-cite button {
+  position: relative;
+  padding: 2px 5px;
+  border: 0;
+  border-bottom: 1px solid var(--cited-rule);
+  border-radius: 2px 2px 0 0;
+  background: var(--cited);
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+/* Taller to hit than to draw, but never wider, so two citations sitting side by
+   side cannot steal each other's taps. */
+.arg-cite button::after {
+  content: "";
+  position: absolute;
+  top: -13px;
+  right: 0;
+  bottom: -13px;
+  left: 0;
+}
+
+.arg-cite button:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.arg-flag {
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* The row a citation pointed at, lit for a moment. Not a selection: it fades,
+   so a second click on the same citation still shows something happened. */
+.evidence li.is-flash {
+  background: var(--accent-wash);
+  border-left-color: var(--accent);
 }
 
 .evidence li {

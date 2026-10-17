@@ -25,10 +25,11 @@ from typing import Any
 
 from app.services.calculations import CalculationError, execute_program
 from app.services.dataset import FinQAExample
-from app.services.llm import Completion, LLMProvider, Message, system, user
+from app.services.llm import Completion, LLMProvider, Message, assistant, system, user
 from app.services.retrieval import TABLE, BM25Index, DocumentLike, EvidenceUnit, build_units
 
 from .answers import extract_json_object
+from .grounding import Grounding, audit, read_report
 
 PROMPT_VERSION = "program-v3"
 
@@ -40,6 +41,11 @@ DEFAULT_TOP_K = 10
 # Room for a short reasoning sentence and a program. Nothing here is a long-form
 # answer, so this is generous rather than tight.
 DEFAULT_MAX_TOKENS = 1024
+
+# One retry by default. A second program is one more model call per question, and
+# on a rate-limited free tier that is a real cost; the measured effect of the
+# first retry is reported in the evaluation rather than assumed.
+DEFAULT_MAX_REPAIRS = 1
 
 PROGRAM_SYSTEM = """You answer questions about a financial report by writing a short program.
 
@@ -80,6 +86,16 @@ Reply with one JSON object and nothing else:
  "evidence": ["table_3", "text_7"]}
 
 The evidence list names the rows you read. Do not state the answer anywhere else: the last step of the program is the answer."""
+
+# Sent back when a program would not run. The engine's own error text goes in the
+# middle of it, because the errors are specific - a name the table does not have, a
+# reference to a step that does not exist - and a model that is told which one it
+# made fixes it far more often than a model that is told to try again.
+REPAIR_INSTRUCTION = """That program did not run:
+
+  {error}
+
+Write it again, using only figures the report states. Do not do the arithmetic yourself, and do not put an evidence name in the program. Reply with one JSON object and nothing else."""
 
 
 @dataclass(frozen=True)
@@ -138,10 +154,30 @@ class GroundedAnswer:
     offered: tuple[Citation, ...] = ()
     # Retrieval found nothing and the whole document went into the prompt.
     retrieval_fallback: bool = False
+    # Where each figure in the program came from, and whether all of them came from
+    # somewhere. Present whenever a program ran, including when the check refused it.
+    grounding: Grounding | None = None
+    # What the model got wrong on the attempts that did not take, oldest first. The
+    # failure the caller sees is the last one; this is how many tries it took to get
+    # past the others.
+    repair_notes: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
         return self.answer is not None
+
+    def unsourced_labels(self, offered: tuple[Citation, ...] | None = None) -> tuple[str, ...]:
+        """Evidence a figure was found in that the prompt never contained.
+
+        Not an error - the check runs against the whole report, and retrieval does
+        not promise to surface the row a figure lives in. It is a useful thing to be
+        able to count, because it is the only visible trace of a model answering
+        from something other than what it was shown.
+        """
+        if self.grounding is None:
+            return ()
+        shown = {citation.label for citation in (offered if offered is not None else self.offered)}
+        return tuple(label for label in self.grounding.labels if label not in shown)
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -153,6 +189,10 @@ class GroundedAnswer:
             "failure": self.failure,
             "retrieval_fallback": self.retrieval_fallback,
         }
+        if self.grounding is not None:
+            payload["grounding"] = self.grounding.to_dict()
+        if self.repair_notes:
+            payload["repair_notes"] = list(self.repair_notes)
         if self.completion is not None:
             payload.update(
                 {
@@ -235,6 +275,33 @@ def build_program_messages(
     return [system(PROGRAM_SYSTEM), user("\n".join(lines))]
 
 
+def _combine(completions: list[Completion]) -> Completion | None:
+    """Roll the calls behind one answer into a single record.
+
+    A repaired answer took more than one call, and reporting only the last one
+    would understate what the question cost and how much quota it used. Cost is
+    summed only when every call had a known price: a partial sum reported as a
+    total would be the silent zero this project refuses elsewhere.
+    """
+    if not completions:
+        return None
+    if len(completions) == 1:
+        return completions[0]
+
+    usage = completions[0].usage
+    for completion in completions[1:]:
+        usage = usage + completion.usage
+
+    costs = [completion.cost_usd for completion in completions]
+    return replace(
+        completions[-1],
+        usage=usage,
+        latency_seconds=sum(completion.latency_seconds for completion in completions),
+        attempts=sum(completion.attempts for completion in completions),
+        cost_usd=None if any(cost is None for cost in costs) else sum(costs),  # type: ignore[arg-type]
+    )
+
+
 class Orchestrator:
     """Retrieve, write a program, run it, and keep the receipts."""
 
@@ -246,14 +313,20 @@ class Orchestrator:
         temperature: float = 0.0,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         prompt_version: str = PROMPT_VERSION,
+        max_repairs: int = DEFAULT_MAX_REPAIRS,
+        enforce_grounding: bool = True,
     ) -> None:
         if top_k < 1:
             raise ValueError("top_k must be at least 1")
+        if max_repairs < 0:
+            raise ValueError("max_repairs cannot be negative")
         self._provider = provider
         self.top_k = top_k
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.prompt_version = prompt_version
+        self.max_repairs = max_repairs
+        self.enforce_grounding = enforce_grounding
 
     @property
     def name(self) -> str:
@@ -300,17 +373,46 @@ class Orchestrator:
         )
 
     def answer(self, document: DocumentLike, question: str) -> GroundedAnswer:
-        """Answer one question about one document."""
+        """Answer one question about one document, retrying a program that fails.
+
+        A program that will not run is usually nearly right: a row named the way the
+        narrative writes it instead of the way the table does, or a figure rounded
+        off. The engine's error says which, so it goes back to the model with the
+        prompt intact. The retry budget is small on purpose - every repair is another
+        call against a free quota - and the measured effect is in the evaluation
+        rather than assumed.
+        """
         retrieval = self.retrieve(document, question)
-        completion = self._provider.complete(
-            build_program_messages(document, retrieval.citations, question),
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-        )
-        grounded = self.resolve(question, completion.text, document, retrieval.by_label)
+        messages = build_program_messages(document, retrieval.citations, question)
+
+        completions: list[Completion] = []
+        notes: list[str] = []
+        grounded: GroundedAnswer | None = None
+
+        for _ in range(self.max_repairs + 1):
+            completion = self._provider.complete(
+                messages, temperature=self.temperature, max_tokens=self.max_tokens
+            )
+            completions.append(completion)
+            grounded = self.resolve(question, completion.text, document, retrieval.by_label)
+
+            if grounded.ok:
+                break
+            notes.append(grounded.failure or "the program did not run")
+            messages = [
+                *messages,
+                assistant(completion.text),
+                user(REPAIR_INSTRUCTION.format(error=notes[-1])),
+            ]
+
+        assert grounded is not None
         return replace(
             grounded,
-            completion=completion,
+            # Every failure along the way, oldest first. On a recovered answer these
+            # are the ones that were got past; on an exhausted one the last entry is
+            # also the failure the caller sees.
+            repair_notes=tuple(notes),
+            completion=_combine(completions),
             offered=retrieval.citations,
             retrieval_fallback=retrieval.fallback,
         )
@@ -327,8 +429,12 @@ class Orchestrator:
         program = payload.get("program") if isinstance(payload, dict) else None
 
         citations = self._citations(payload, by_label)
+        # Everything the caller put in the prompt, in the order it was offered, so
+        # ``unsourced_labels`` can tell a figure read from a shown row apart from one
+        # found elsewhere in the report without the caller passing it back in.
+        offered = tuple(by_label.values())
 
-        def failed(reason: str) -> GroundedAnswer:
+        def failed(reason: str, grounding: Grounding | None = None) -> GroundedAnswer:
             return GroundedAnswer(
                 question=question,
                 answer=None,
@@ -337,6 +443,8 @@ class Orchestrator:
                 citations=citations,
                 failure=reason,
                 reply=reply,
+                grounding=grounding,
+                offered=offered,
             )
 
         if not program or not str(program).strip():
@@ -349,14 +457,28 @@ class Orchestrator:
             # this architecture exists to make impossible.
             return failed(f"{type(exc).__name__}: {exc}")
 
+        grounding = audit(trace, read_report(document))
+
+        if self.enforce_grounding and grounding.blocks:
+            # Every figure the program used is one the report does not state, so the
+            # answer is arithmetic on numbers of the model's own making. It is the
+            # one case where a program that *ran* is still not an answer.
+            unsourced = ", ".join(grounding.unsourced) or "no figure"
+            return failed(f"UngroundedAnswer: the report states none of {unsourced}", grounding)
+
         return GroundedAnswer(
             question=question,
             answer=str(trace.result),
             program=str(program).strip(),
+            # The engine's own rendering. The citations on the operands are in
+            # ``grounding``, kept apart so that a step line keeps meaning the same
+            # thing in every run this project has recorded.
             steps=tuple(step.render() for step in trace.steps),
             citations=citations,
             failure=None,
             reply=reply,
+            grounding=grounding,
+            offered=offered,
         )
 
     def _citations(self, payload: Any, by_label: dict[str, Citation]) -> tuple[Citation, ...]:

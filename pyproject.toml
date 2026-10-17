@@ -3,17 +3,14 @@ name = "ledgerlens-ai"
 version = "0.1.0"
 description = "Evidence-grounded financial intelligence: numerical reasoning over financial reports"
 requires-python = ">=3.11,<3.13"
+# A dependency here is something the code imports, not something planned. Anything
+# the roadmap wants goes in an extra below, so `pip install -e .` never installs a
+# library that nothing calls.
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
-    "sqlalchemy>=2.0",
-    "psycopg[binary]>=3.2",
-    "pgvector>=0.3",
-    "python-multipart>=0.0.9",
-    "pandas>=2.2",
-    "numpy>=1.26",
     "httpx>=0.27",
 ]
 

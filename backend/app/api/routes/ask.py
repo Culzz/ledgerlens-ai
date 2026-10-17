@@ -12,7 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import get_orchestrator, require_library
-from app.schemas.api import AskRequest, AskResponse, EvidenceOut
+from app.schemas.api import AskRequest, AskResponse, EvidenceOut, GroundingOut
 from app.services.llm import BudgetExceeded, LLMError, ProviderNotConfigured, ProviderRateLimited
 from app.services.reasoning import Document
 
@@ -62,13 +62,21 @@ def ask(request: AskRequest) -> AskResponse:
     record = library.example_for(request.document_id, request.question)
     completion = grounded.completion
 
+    # The wire shape is the grounding module's own, validated rather than rebuilt
+    # here, so the trail a reader sees and the trail the check reasoned over cannot
+    # drift apart.
+    audit = (
+        GroundingOut.model_validate(grounded.grounding.to_dict()) if grounded.grounding else None
+    )
+
     return AskResponse(
         question=grounded.question,
         answer=grounded.answer,
         program=grounded.program,
-        steps=list(grounded.steps),
+        audit=audit,
         failure=grounded.failure,
         evidence=evidence,
+        repair_count=len(grounded.repair_notes),
         retrieval_fallback=grounded.retrieval_fallback,
         provider=completion.provider if completion else "unknown",
         model=(completion.model if completion else None) or None,

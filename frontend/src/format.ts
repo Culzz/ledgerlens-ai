@@ -1,6 +1,8 @@
 // Formatting shared by the panels, so a figure is set the same way wherever it
 // turns up.
 
+import type { Answer, Audit } from "./api";
+
 // A cell that holds a figure rather than a label. Currency marks, thousands
 // separators, a trailing percent, parentheses for a negative: all the ways a
 // statement writes a number.
@@ -54,4 +56,75 @@ export function formatAnswer(value: string): { shown: string; exact: string | nu
   );
   const rounded = Number(exactNumber.toPrecision(digits));
   return { shown, exact: rounded === exactNumber ? null : trimmed };
+}
+
+// The badge a reader looks at first, and the sentence behind it. The three
+// verdicts are three different claims and the wording keeps them apart: "all the
+// figures were in the report" is not the same statement as "none of them were".
+export interface Trust {
+  text: string;
+  tone: "good" | "warn" | "bad";
+  detail: string;
+}
+
+export function trustOf(audit: Audit | null): Trust | null {
+  if (!audit) return null;
+
+  const figures = (n: number) => plural(n, "figure");
+  switch (audit.verdict) {
+    case "grounded":
+      return {
+        text: "Verified audit",
+        tone: "good",
+        detail:
+          audit.literal_count === 0
+            ? "the program names rows and columns rather than writing figures, so there was no figure to check"
+            : `all ${figures(audit.sourced_count)} appear in the report`,
+      };
+    case "partly_grounded":
+      return {
+        text: "Partly verified",
+        tone: "warn",
+        detail: `rests on ${figures(audit.unsourced.length)} the report does not state (${audit.unsourced.join(", ")})`,
+      };
+    default:
+      return {
+        text: "Unverified",
+        tone: "bad",
+        detail: `no figure in this program appears in the report (${audit.unsourced.join(", ")})`,
+      };
+  }
+}
+
+// The answer as markdown, with the citations intact. Bounded by a pipe-free form
+// of the step, because a row label can contain anything and a table row cannot.
+export function toMarkdown(answer: Answer, source: string | null): string {
+  const lines: string[] = [
+    `**Question.** ${answer.question}`,
+    "",
+    answer.answer !== null
+      ? `**Answer.** ${answer.answer}`
+      : `**Answer.** none. ${answer.failure ?? "The program could not be run."}`,
+  ];
+
+  const trust = trustOf(answer.audit);
+  if (trust) {
+    lines.push("", `**${trust.text}.** ${trust.detail}`);
+  }
+  if (source) {
+    lines.push("", `_Source: ${source}._`);
+  }
+  if (answer.program) {
+    lines.push("", "```", answer.program, "```");
+  }
+
+  const steps = answer.audit?.steps ?? [];
+  if (steps.length > 0) {
+    lines.push("", "| # | working |", "| --- | --- |");
+    for (const step of steps) {
+      lines.push(`| ${step.index + 1} | \`${step.render.replace(/\|/g, "\\|")}\` |`);
+    }
+  }
+
+  return lines.join("\n");
 }

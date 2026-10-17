@@ -35,7 +35,13 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.services.dataset import FinQAExample, load_split
 from app.services.llm import BudgetExceeded, BudgetLedger, LLMProvider, build_provider
-from app.services.reasoning import FORMAT_UNEXECUTED, FORMAT_UNPARSED, ParsedAnswer, to_decimal
+from app.services.reasoning import (
+    FORMAT_UNEXECUTED,
+    FORMAT_UNPARSED,
+    UNGROUNDED,
+    ParsedAnswer,
+    to_decimal,
+)
 
 from evaluation.baselines import DirectLLM, ProgramLLM, System
 from evaluation.scoring import DEFAULT_TOLERANCE, Judgement, judge
@@ -69,6 +75,11 @@ class Outcome:
     attempts: int = 1
     call_error: str | None = None
     finish_reason: str | None = None
+    # How many times a failed program was sent back, and what the grounding check
+    # made of the program that finally ran. Both default to "none happened", which
+    # is the right reading for a baseline that has neither.
+    repair_count: int = 0
+    grounding_verdict: str | None = None
 
     @property
     def billed_tokens(self) -> int:
@@ -120,6 +131,17 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
     latencies = [o.latency_seconds for o in outcomes if not o.call_error]
     priced = [o for o in outcomes if o.cost_usd is not None]
 
+    # A repair that never fires and a check that never objects are indistinguishable
+    # from not having them, so both are counted rather than assumed.
+    repaired = [o for o in outcomes if o.repair_count > 0]
+    repaired_ok = sum(1 for o in repaired if o.correct)
+    refused = [
+        o
+        for o in outcomes
+        if o.answer_format == FORMAT_UNEXECUTED and o.grounding_verdict == UNGROUNDED
+    ]
+    refused_ungrounded = sum(1 for o in outcomes if o.grounding_verdict == UNGROUNDED)
+
     by_outcome: dict[str, int] = {}
     for outcome in outcomes:
         by_outcome[outcome.outcome] = by_outcome.get(outcome.outcome, 0) + 1
@@ -141,6 +163,11 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
         "unanswered_rate": round(unanswered / n, 4),
         "call_errors": sum(1 for o in outcomes if o.call_error),
         "truncated": sum(1 for o in outcomes if o.finish_reason == "length"),
+        "repaired": len(repaired),
+        "repaired_rate": round(len(repaired) / n, 4),
+        "repaired_ok": repaired_ok,
+        "refused": len(refused),
+        "refused_ungrounded": refused_ungrounded,
         "outcomes": dict(sorted(by_outcome.items())),
         "answer_formats": dict(sorted(by_format.items())),
         "latency_seconds": {
@@ -191,17 +218,42 @@ def render(summary: dict[str, Any], config: dict[str, Any], *, complete: bool) -
         f"prompt:      {config['prompt_version']}",
         f"question:    {summary['n']} scored"
         + ("" if complete else " (INCOMPLETE - resume to finish)"),
-        "",
-        f"accuracy:            {summary['accuracy']:.4f}   (strict, tolerance {config['tolerance']})",
-        f"percent-equivalent:  {summary['accuracy_percent_equivalent']:.4f}   (also accepts x100)",
-        f"no answer:           {summary['unanswered']} ({summary['unanswered_rate']:.4f})",
-        f"  unreadable reply:  {summary['parse_failures']}",
-        f"  unexecutable:      {summary['unexecuted']}",
-        f"call errors:         {summary['call_errors']}",
-        f"cut off by provider: {summary['truncated']}",
-        "",
-        "where the answer came from",
     ]
+
+    if config.get("max_repairs") is not None:
+        gate = "on" if config.get("enforce_grounding") else "off"
+        lines.append(f"trust:       repairs up to {config['max_repairs']}, grounding gate {gate}")
+    if summary.get("repaired"):
+        lines.append(
+            f"  {summary['repaired']} answer(s) took more than one attempt "
+            f"({summary['repaired_rate']:.4f}), {summary['repaired_ok']} of them succeeded"
+        )
+    if summary.get("refused"):
+        lines.append(
+            f"  {summary['refused']} refused as ungrounded, "
+            f"{summary['refused_ungrounded']} in the end"
+        )
+
+    lines.extend(
+        [
+            "",
+            (
+                f"accuracy:            {summary['accuracy']:.4f}   "
+                f"(strict, tolerance {config['tolerance']})"
+            ),
+            (
+                f"percent-equivalent:  {summary['accuracy_percent_equivalent']:.4f}   "
+                f"(also accepts x100)"
+            ),
+            f"no answer:           {summary['unanswered']} ({summary['unanswered_rate']:.4f})",
+            f"  unreadable reply:  {summary['parse_failures']}",
+            f"  unexecutable:      {summary['unexecuted']}",
+            f"call errors:         {summary['call_errors']}",
+            f"cut off by provider: {summary['truncated']}",
+            "",
+            "where the answer came from",
+        ]
+    )
     for name, count in summary["answer_formats"].items():
         lines.append(f"  {name:<16}{count:>6}")
 
@@ -376,6 +428,10 @@ def score_all(
                 attempts=record.get("attempts", 1),
                 call_error=record.get("call_error"),
                 finish_reason=record.get("finish_reason"),
+                repair_count=(record.get("detail") or {}).get("repair_count", 0),
+                grounding_verdict=((record.get("detail") or {}).get("grounding") or {}).get(
+                    "verdict"
+                ),
             )
         )
     return outcomes
@@ -401,6 +457,11 @@ def build_config(
         "free_tier": getattr(provider, "free_tier", None),
         "max_retries": getattr(provider, "max_retries", None),
         "temperature": getattr(system, "temperature", None),
+        # Present only on a program system. Recorded because a run of "program" with
+        # repairs on and a run with them off are different systems, and a report
+        # that does not say which one it is cannot be compared with anything.
+        "max_repairs": getattr(system, "max_repairs", None),
+        "enforce_grounding": getattr(system, "enforce_grounding", None),
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "budget_limit_usd": settings.llm_monthly_budget_usd,
     }
@@ -421,15 +482,45 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out", default=str(DEFAULT_REPORTS), help="where to put a new run")
     parser.add_argument("--resume", default=None, help="an existing run directory to continue")
     parser.add_argument("--progress-every", type=int, default=25)
+    parser.add_argument(
+        "--max-repairs",
+        type=int,
+        default=None,
+        help="program system only: how many times to send a failed program back",
+    )
+    parser.add_argument(
+        "--no-grounding-gate",
+        action="store_true",
+        help="program system only: report the grounding verdict without refusing on it",
+    )
     parser.add_argument("--no-save", action="store_true")
     return parser.parse_args(argv)
+
+
+def system_kwargs(args: argparse.Namespace) -> dict[str, Any]:
+    """Flags that only mean something to a system that writes programs.
+
+    Kept out of the direct baseline's constructor rather than passed and ignored,
+    so that a flag which does nothing is obvious from the call site.
+    """
+    if args.system != "program":
+        if args.max_repairs is not None or args.no_grounding_gate:
+            raise SystemExit("--max-repairs and --no-grounding-gate are for --system program")
+        return {}
+
+    kwargs: dict[str, Any] = {}
+    if args.max_repairs is not None:
+        kwargs["max_repairs"] = args.max_repairs
+    if args.no_grounding_gate:
+        kwargs["enforce_grounding"] = False
+    return kwargs
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     settings = get_settings()
     provider = build_provider(settings)
-    system: System = SYSTEMS[args.system](provider)
+    system: System = SYSTEMS[args.system](provider, **system_kwargs(args))
 
     path = Path(args.split)
     examples = load_split(path)

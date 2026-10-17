@@ -1,0 +1,33 @@
+{
+  "split": "data\\finqa\\dev.json",
+  "source": "data\\finqa\\dev.json",
+  "tolerance": "1e-3",
+  "generated_at": "2026-10-16T16:15:29+00:00",
+  "total": 883,
+  "matched": 883,
+  "errors": 0,
+  "mismatched": 0,
+  "by_step_count": {
+    "1": {
+      "total": 523,
+      "matched": 523
+    },
+    "2": {
+      "total": 287,
+      "matched": 287
+    },
+    "4": {
+      "total": 14,
+      "matched": 14
+    },
+    "3": {
+      "total": 43,
+      "matched": 43
+    },
+    "5": {
+      "total": 16,
+      "matched": 16
+    }
+  },
+  "error_kinds": {}
+}

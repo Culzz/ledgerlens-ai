@@ -53,6 +53,11 @@ instruction.
   decided, it's recorded in `model_card.md`.
 - Full deletion of a document and everything derived from it.
 - Tell the user, in the UI, when their content leaves the deployment boundary.
+- **Non-public financials are a legal question, not a feature.** Sending a real, unpublished set of
+  accounts to a third party's model API is a disclosure, and no amount of care on this side of the
+  wire changes that. The demo runs on published filings for that reason. Pointing it at material
+  non-public information is an insider-disclosure decision, and not one to back into because a README
+  described the transport as encrypted.
 
 ## Secrets
 

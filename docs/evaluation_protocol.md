@@ -3,7 +3,9 @@
 Written before implementation, on purpose. The point is that results can't get reverse-engineered
 from whatever the system happens to produce, and that comparisons against baselines are fair.
 
-Version 0.1. No results recorded yet.
+Version 0.2. The protocol itself is unchanged from 0.1; what changed is that there are now results
+under `evaluation/reports/`, and the check described in "Measuring the check without a model" is
+built and has a measured cost.
 
 ## The question
 
@@ -105,12 +107,19 @@ Each failure gets one primary category, so effort goes where it's actually neede
 
 `wrong_evidence_retrieved`, `correct_evidence_wrong_figures`, `period_confused`,
 `unit_or_scale_mismatch`, `arithmetic_error`, `percentage_vs_percentage_point`,
-`unsupported_inference`, `fabricated_citation`, `failed_to_abstain`, `extraction_error`
+`unsupported_inference`, `fabricated_citation`, `ungrounded_figure`, `failed_to_abstain`,
+`extraction_error`
 
-One of these is decided mechanically rather than by reading: a program that will not run is an
+Two of these are decided mechanically rather than by reading. A program that will not run is an
 `unexecuted` answer, counted apart from an unreadable reply. It is the characteristic failure of the
 engine-based system, and it means the model answered in the right shape and misread the document,
 which is a different thing to fix than a model that would not answer at all.
+
+The other is `ungrounded_figure`: a program that runs, and whose figures include none the report
+states. That is the one failure the engine cannot see on its own, because the arithmetic is sound and
+the inputs are invented. The check classifies every figure in a program rather than the whole program
+at once, and the middle case matters: a program resting on one figure the report does not state is a
+weaker answer, not an invented one, and it is reported as `partly_grounded` rather than refused.
 
 ## Reporting rules
 
@@ -147,3 +156,33 @@ unnecessary refusals.
 
 **Adaptive retrieval and computation.** Route by question type, so a simple lookup doesn't cost the
 same as a multi-step calculation. Reports the accuracy, latency and cost trade-off.
+
+### Measuring the check without a model
+
+The trust layer is measured two ways, and the second exists because the first is slow and burns
+quota.
+
+`evaluation/audit_grounding.py` takes a finished run and replays every stored reply through the
+grounding check and the audit trail:
+
+```
+python -m evaluation.audit_grounding evaluation/reports/<run-directory>
+```
+
+No model calls, so it costs nothing and runs again after every change to the check. It reports two
+things that are easy to assume and hard to know:
+
+- **Replay stability.** How many stored replies produce a different answer the second time. The
+  engine is deterministic, so this must be zero apart from answers the check itself now refuses. A
+  non-zero count anywhere else means the recorded run and the code disagree about the answer, which
+  is a bug in one of the two and not a result.
+- **What the check costs in accuracy.** Correct answers with the check off against correct answers
+  with it on, how many answers were refused, and how many of those refusals were right. A check that
+  refuses correct answers is worse than no check, and this is the number that says whether it does.
+
+That second measurement bounds the check alone. It cannot see the repair loop standing next to it,
+because a replay of stored replies never gets to the second attempt: the first reply failed and the
+second one was never recorded. Measuring the loop needs a live run, so the run's `config.json`
+records `max_repairs` and `enforce_grounding`, and the system name carries them too. A run of
+`program` with the trust layer on and a run with it off are different systems, and reports that
+cannot be told apart are not comparable.

@@ -16,5 +16,25 @@ reports/
     error_analysis.json   category distribution
 ```
 
-Working run directories are git-ignored. Summary tables get added deliberately, once they're worth
-committing.
+## What is committed, and what is not
+
+`evaluation/reports/*` is git-ignored, so a run directory does not land in the repository by accident.
+That leaves a gap, and it is worth naming: the README and the model card cite run directories, and a
+citation nobody can open is not a citation.
+
+So the two small files that make a number traceable are committed deliberately, by name, for the runs
+worth citing:
+
+```
+git add -f evaluation/reports/<run-directory>/config.json \
+           evaluation/reports/<run-directory>/metrics.json
+```
+
+`config.json` names the split, the question count, the provider, the model, the prompt version, the
+tolerance and the trust-layer settings. `metrics.json` holds the aggregates. Between them a reader can
+check that a quoted figure came from the run that claims it, and under which settings.
+
+The per-question files stay out, and the reason is size rather than secrecy. A prediction record holds
+the model's full reply, the program it wrote and the evidence rows it worked from, which across 883
+questions is the bulk of a run. The scorer reads the reference answer from the split file, not from
+the prediction, so the two small files really are enough to reproduce the aggregate.
