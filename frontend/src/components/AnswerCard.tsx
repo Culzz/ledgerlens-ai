@@ -219,22 +219,29 @@ function AuditTrail({ audit, onCite }: { audit: Audit; onCite: (label: string) =
           )}
 
           <ol className="audit-steps">
-            {audit.steps.map((step) => (
-              <li key={step.index}>
-                <span className="idx num">#{step.index}</span>
-                <span className="op">{step.operation}</span>
-                <span className="args">
-                  {step.operands.map((operand, index) => (
-                    <span key={index} className="arg">
-                      {index > 0 && <span className="comma">,</span>}
-                      <OperandChip operand={operand} onCite={onCite} />
-                    </span>
-                  ))}
-                </span>
-                <span className="eq">=</span>
-                <span className="res num">{step.result}</span>
-              </li>
-            ))}
+            {audit.steps.map((step) => {
+              // The same figure the answer card shows, so a reader never sees two
+              // different numbers for one quantity. The unrounded value is on hover.
+              const result = formatAnswer(step.result);
+              return (
+                <li key={step.index}>
+                  <span className="idx num">#{step.index}</span>
+                  <span className="op">{step.operation}</span>
+                  <span className="args">
+                    {step.operands.map((operand, index) => (
+                      <span key={index} className="arg">
+                        <OperandChip operand={operand} onCite={onCite} />
+                        {index < step.operands.length - 1 && <span className="comma">,</span>}
+                      </span>
+                    ))}
+                  </span>
+                  <span className="eq">=</span>
+                  <span className="res num" title={result.exact ?? undefined}>
+                    {result.shown}
+                  </span>
+                </li>
+              );
+            })}
           </ol>
         </div>
       )}
