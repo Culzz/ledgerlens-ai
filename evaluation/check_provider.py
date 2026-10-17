@@ -1,11 +1,18 @@
 """Check the configured provider before committing to a long run.
 
     python -m evaluation.check_provider
+    python -m evaluation.check_provider --provider mistral --model mistral-large-latest
+    python -m evaluation.check_provider --provider mistral --list-only
 
 Asks three questions in the order they are useful: is the configuration
 complete, does the key authenticate, and does the model actually answer. An
 evaluation that dies forty minutes in because the key was mistyped wastes an
 evening, and this costs exactly one request.
+
+``--provider`` checks one you have a key for without changing what the rest of
+the project is configured to use, which is how a candidate gets tried before it
+gets committed to. ``--list-only`` stops after the model list, because choosing
+a model id costs nothing at all.
 
 The key is never printed. It is described by length and last four characters,
 which is enough to tell a wrong key from a truncated paste.
@@ -15,6 +22,7 @@ Exit code is 0 when the provider answered, 1 otherwise, so it can gate a script.
 
 from __future__ import annotations
 
+import argparse
 import sys
 
 import httpx
@@ -88,7 +96,7 @@ def list_models(base_url: str, api_key: str, *, limit: int = 40) -> None:
         print(f"    {name}")
 
 
-def check(settings: Settings) -> int:
+def check(settings: Settings, *, list_only: bool = False) -> int:
     provider_name = (settings.llm_provider or "").strip().lower()
     print(f"provider:  {provider_name}")
     print(f"model:     {settings.llm_model or '(not set)'}")
@@ -118,6 +126,11 @@ def check(settings: Settings) -> int:
     print("\nlisting models...")
     list_models(connection.base_url, connection.api_key)
 
+    if list_only:
+        # Listing is a GET on the model index, so it spends no quota. Stopping
+        # here is how a model id gets chosen for free.
+        return 0
+
     print("\nmaking one real call...")
     provider = build_provider(settings)
     try:
@@ -146,8 +159,36 @@ def check(settings: Settings) -> int:
     return 0
 
 
-def main() -> int:
-    return check(get_settings())
+def settings_for(settings: Settings, provider: str | None, model: str | None) -> Settings:
+    """The given settings with a provider or model swapped in, if either was asked for.
+
+    Kept separate from the argument parsing so that the override can be tested
+    without reaching the network.
+    """
+    overrides: dict[str, str] = {}
+    if provider:
+        overrides["llm_provider"] = provider.strip().lower()
+    if model:
+        overrides["llm_model"] = model.strip()
+    return settings.model_copy(update=overrides) if overrides else settings
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--provider", help="check this provider instead of the configured one")
+    parser.add_argument("--model", help="check this model id instead of the configured one")
+    parser.add_argument(
+        "--list-only",
+        action="store_true",
+        help="stop after the model list; spends no quota",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    settings = settings_for(get_settings(), args.provider, args.model)
+    return check(settings, list_only=args.list_only)
 
 
 if __name__ == "__main__":

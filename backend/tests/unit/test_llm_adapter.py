@@ -120,6 +120,8 @@ def settings(**overrides) -> Settings:
         "openai_api_key": "",
         "groq_api_key": "",
         "gemini_api_key": "",
+        "mistral_api_key": "",
+        "nvidia_api_key": "",
         "cerebras_api_key": "",
         "openrouter_api_key": "",
     }
@@ -768,6 +770,15 @@ class TestResolveConnection:
     def test_missing_model_names_the_right_hint(self):
         with pytest.raises(ProviderNotConfigured, match="aistudio.google.com"):
             resolve_connection(settings(llm_provider="gemini", gemini_api_key="k"))
+
+    def test_a_provider_reads_its_own_key_variable(self):
+        # {name}_api_key is looked up by name, so a provider added to the endpoint
+        # table without a matching settings field would send no key at all.
+        connection = resolve_connection(
+            settings(llm_provider="mistral", llm_model="mistral-large-latest", mistral_api_key="mk")
+        )
+        assert connection.api_key == "mk"
+        assert connection.base_url == "https://api.mistral.ai/v1"
 
     def test_every_compatible_provider_has_a_model_list_hint(self):
         assert set(COMPATIBLE_ENDPOINTS) <= set(MODEL_LIST_HINTS)
