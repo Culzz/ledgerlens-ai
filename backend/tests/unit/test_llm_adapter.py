@@ -502,6 +502,30 @@ class TestRetries:
             provider.complete([user("q")])
         assert sleeps.delays == [], "it must not sit through a nine hour wait"
 
+    def test_a_daily_quota_wrapped_in_a_list_is_still_read(self):
+        """Gemini's OpenAI-compatible layer returns errors inside a one-element list."""
+        sleeps = SleepRecorder()
+        response = httpx.Response(
+            429,
+            json=[
+                {
+                    "error": {
+                        "code": 429,
+                        "details": [
+                            {
+                                "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                                "retryDelay": "540s",
+                            }
+                        ],
+                    }
+                }
+            ],
+        )
+        provider = make_provider(Responder([response]), sleeps=sleeps)
+        with pytest.raises(ProviderRateLimited, match=r"9m00s"):
+            provider.complete([user("q")])
+        assert sleeps.delays == []
+
     def test_backoff_grows_when_no_header_is_given(self):
         sleeps = SleepRecorder()
         responder = Responder(

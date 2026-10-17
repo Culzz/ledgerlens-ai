@@ -79,6 +79,11 @@ def _body_retry_delay(response: httpx.Response) -> float | None:
     except ValueError:
         return None
 
+    # Gemini's OpenAI-compatible layer wraps its error in a one-element list,
+    # which is not the shape the OpenAI error object has.
+    if isinstance(body, list):
+        body = body[0] if body else None
+
     error = body.get("error") if isinstance(body, dict) else None
     if not isinstance(error, dict):
         return None
