@@ -25,7 +25,17 @@ class Settings(BaseSettings):
     app_env: str = "local"
     log_level: str = "INFO"
 
+    # Vite's dev server, for running the frontend separately. In a deployment the
+    # frontend is served from this app's own origin and none of this applies.
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     database_url: str = "postgresql+psycopg://ledgerlens:ledgerlens@localhost:5432/ledgerlens"
+
+    # Where the built frontend sits, resolved from the working directory. The app
+    # is run from the project root, in a container as much as on a laptop, so this
+    # stays a plain relative path instead of something derived from ``__file__``
+    # that only holds together when the package is not installed.
+    frontend_dist: str = "frontend/dist"
 
     # --- LLM provider ---
     # "fake" runs offline. Anything else must speak the OpenAI chat-completions
