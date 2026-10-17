@@ -5,10 +5,12 @@ codebase needs to know which vendors exist.
 
 Anything that speaks the OpenAI chat-completions shape is a base url and a key,
 which is why the list below is short and boring. The entries earn their place by
-being reachable without a credit card, because a daily request ceiling is what
-actually decides whether a split can be evaluated at all: Gemini's free tier
-allows twenty requests a day, Groq's a thousand, and Mistral's free mode has no
-published daily cap at all.
+being reachable without a credit card, because a free tier's terms are what
+actually decide whether a split can be evaluated at all - and they change
+without notice, so the useful check is per model rather than per provider.
+Gemini's free tier allows twenty requests a day, Groq's a thousand, and
+Mistral's free mode currently answers the Medium and Small chat models with a
+429 while still answering the Ministral ones.
 """
 
 from __future__ import annotations

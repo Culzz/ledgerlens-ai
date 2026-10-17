@@ -125,10 +125,10 @@ everything runs without one. When you want real answers, set `LLM_PROVIDER` and 
 `.env` and add a key — the adapter speaks the OpenAI chat-completions shape, so Gemini, Groq,
 Mistral, NVIDIA Build, OpenRouter and OpenAI are a change to configuration rather than to code.
 
-Worth checking a provider's daily request ceiling before pointing a split at it, because it is the
-daily limit rather than the per-minute one that decides whether a run finishes. Gemini's free tier
-allows 20 requests a day per model, Groq's 1,000, and Mistral's free mode publishes no daily cap but
-runs at roughly a request a second.
+Worth checking a provider's free tier before pointing a split at it, and checking the specific model
+rather than the provider, because those terms change without notice. Gemini's free tier allows 20
+requests a day per model, Groq's 1,000, and Mistral's free mode answers 429 on the first request for
+its Medium and Small chat models while its Ministral ones still answer.
 
 ## Plan
 
