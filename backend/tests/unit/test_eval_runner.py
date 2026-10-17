@@ -304,9 +304,7 @@ class TestScoring:
             encoding="utf-8",
         )
 
-        summary = summarise(
-            score_all(examples, load_predictions(path), tolerance=1e-3)
-        )
+        summary = summarise(score_all(examples, load_predictions(path), tolerance=1e-3))
 
         assert summary["truncated"] == 1
         assert summary["tokens"]["reasoning"] == 3980
@@ -316,9 +314,7 @@ class TestScoring:
         examples = [example(1, 100), example(2, "yes", question="did it rise?")]
         path = tmp_path / "predictions.jsonl"
         provider = FakeLLM(responses=["ANSWER: 100", "ANSWER: yes"])
-        predictions, _ = execute(
-            DirectLLM(provider), examples, path, budget=fresh_budget(tmp_path)
-        )
+        predictions, _ = execute(DirectLLM(provider), examples, path, budget=fresh_budget(tmp_path))
         summary = summarise(score_all(examples, predictions, tolerance=1e-3))
         assert summary["by_reference_kind"]["number"]["accuracy"] == 1.0
         assert summary["by_reference_kind"]["text"]["accuracy"] == 1.0
@@ -355,6 +351,9 @@ class TestReport:
             "accuracy_percent_equivalent": 0.0,
             "parse_failures": 0,
             "parse_failure_rate": 0.0,
+            "unexecuted": 0,
+            "unanswered": 0,
+            "unanswered_rate": 0.0,
             "call_errors": 0,
             "truncated": 0,
             "answer_formats": {},

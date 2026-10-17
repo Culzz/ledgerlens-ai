@@ -23,13 +23,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.services.reasoning import ParsedAnswer, normalise_text, to_decimal
+from app.services.reasoning import FORMAT_UNEXECUTED, ParsedAnswer, normalise_text, to_decimal
 
 DEFAULT_TOLERANCE = 1e-3
 
 # Why a prediction was marked wrong. Only mechanically determinable reasons live
 # here; the interpretive ones from the protocol need a human or a second model.
 OUTCOME_PARSE_FAILED = "parse_failed"
+OUTCOME_UNEXECUTED = "unexecuted"
 OUTCOME_WRONG_NUMBER = "wrong_number"
 OUTCOME_WRONG_TEXT = "wrong_text"
 OUTCOME_ANSWERED_WHEN_UNANSWERABLE = "answered_when_unanswerable"
@@ -86,6 +87,12 @@ def judge(
     if call_error is not None:
         return Judgement(False, False, OUTCOME_ERROR, None, reference_text)
 
+    if parsed.format == FORMAT_UNEXECUTED:
+        # The reply read fine, the program inside it did not run. Kept apart from
+        # a parse failure because it says something different: the model answered
+        # in the right shape and was wrong about the document.
+        return Judgement(False, False, OUTCOME_UNEXECUTED, None, reference_text)
+
     if not parsed.parsed:
         return Judgement(False, False, OUTCOME_PARSE_FAILED, None, reference_text)
 
@@ -101,9 +108,7 @@ def judge(
         return Judgement(True, True, OUTCOME_CORRECT, predicted, reference_text)
 
     if _percent_equivalent(predicted, reference_text, tolerance):
-        return (
-            Judgement(False, True, OUTCOME_CORRECT_PERCENT_EQUIVALENT, predicted, reference_text)
-        )
+        return Judgement(False, True, OUTCOME_CORRECT_PERCENT_EQUIVALENT, predicted, reference_text)
 
     if to_decimal(predicted) is not None or to_decimal(reference_text) is not None:
         outcome = OUTCOME_WRONG_NUMBER

@@ -70,6 +70,11 @@ Same questions, same model, same source context where it applies.
 | C | hybrid RAG | hybrid + rerank | model does it |
 | D | LedgerLens | hybrid + rerank | deterministic engine + verifier |
 
+Built so far: A is `--system direct`, and D is `--system program`, which runs retrieval and the
+engine but still has lexical retrieval where the table says hybrid plus rerank. B and C are the
+middle rungs and are not built, because once the engine is in place a run that hands retrieved rows
+back to the model for it to do the arithmetic itself measures less than the run next to it costs.
+
 Baseline A has to get the table in context. If it's set up to fail, the whole comparison is
 worthless. For scale, the numbers that already exist in the literature: GPT-4 with the table is
 around 65%, GPT-4 with chain-of-thought style prompting gets into the 70s, and FinQAPT reported
@@ -101,6 +106,11 @@ Each failure gets one primary category, so effort goes where it's actually neede
 `wrong_evidence_retrieved`, `correct_evidence_wrong_figures`, `period_confused`,
 `unit_or_scale_mismatch`, `arithmetic_error`, `percentage_vs_percentage_point`,
 `unsupported_inference`, `fabricated_citation`, `failed_to_abstain`, `extraction_error`
+
+One of these is decided mechanically rather than by reading: a program that will not run is an
+`unexecuted` answer, counted apart from an unreadable reply. It is the characteristic failure of the
+engine-based system, and it means the model answered in the right shape and misread the document,
+which is a different thing to fix than a model that would not answer at all.
 
 ## Reporting rules
 

@@ -20,12 +20,28 @@ separate problem, and doing it here would change what the measurement means.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 from app.services.dataset import FinQAExample
 
 TABLE = "table"
 TEXT = "text"
+
+
+@runtime_checkable
+class DocumentLike(Protocol):
+    """The part of a document retrieval needs, and nothing else.
+
+    A FinQA record satisfies this, and so does a report uploaded through the
+    product path. Both then run the same retriever, which is the only way the
+    retrieval measured on the benchmark says anything about the product.
+    """
+
+    id: str
+    table: Sequence[Sequence[str]]
+    context_text: Sequence[str]
 
 
 @dataclass(frozen=True)
@@ -81,7 +97,7 @@ def row_text(table, row_index: int) -> str:
     return " ".join(parts)
 
 
-def build_units(example: FinQAExample) -> tuple[EvidenceUnit, ...]:
+def build_units(example: DocumentLike) -> tuple[EvidenceUnit, ...]:
     """Every unit in one document, in a stable order.
 
     The count is always ``len(table) + len(context_text)``. Empty narrative

@@ -37,6 +37,11 @@ FORMAT_JSON = "json"
 FORMAT_MARKER = "marked"
 FORMAT_FALLBACK = "last_number"
 FORMAT_UNPARSED = "unparsed"
+# The reply parsed but the program it carried would not run. Kept apart from
+# ``unparsed`` because they are different failures: one is a model that did not
+# answer in a readable shape, the other is a model that answered clearly and was
+# wrong about the document. Counting them together hides the second.
+FORMAT_UNEXECUTED = "unexecuted"
 
 
 @dataclass(frozen=True)

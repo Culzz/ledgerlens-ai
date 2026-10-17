@@ -35,9 +35,9 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.services.dataset import FinQAExample, load_split
 from app.services.llm import BudgetExceeded, BudgetLedger, LLMProvider, build_provider
-from app.services.reasoning import ParsedAnswer, to_decimal
+from app.services.reasoning import FORMAT_UNEXECUTED, FORMAT_UNPARSED, ParsedAnswer, to_decimal
 
-from evaluation.baselines import DirectLLM, System
+from evaluation.baselines import DirectLLM, ProgramLLM, System
 from evaluation.scoring import DEFAULT_TOLERANCE, Judgement, judge
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +45,7 @@ DEFAULT_REPORTS = ROOT / "evaluation" / "reports"
 DEFAULT_SYSTEM = "direct"
 HALTED_EXIT_CODE = 3
 
-SYSTEMS = {"direct": DirectLLM}
+SYSTEMS = {"direct": DirectLLM, "program": ProgramLLM}
 
 
 @dataclass
@@ -102,7 +102,21 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
 
     correct = sum(1 for o in outcomes if o.correct)
     percent_equivalent = sum(1 for o in outcomes if o.correct or o.percent_equivalent)
-    parsed = [o for o in outcomes if o.answer_format != "unparsed" and not o.call_error]
+    # Producing no answer covers two different failures, and they are counted
+    # apart: a reply that could not be read, and a reply that read fine but whose
+    # program would not run. Blending them would hide the second, which is the
+    # characteristic failure of a program-shaped system.
+    parse_failures = sum(
+        1 for o in outcomes if not o.call_error and o.answer_format == FORMAT_UNPARSED
+    )
+    unexecuted = sum(
+        1 for o in outcomes if not o.call_error and o.answer_format == FORMAT_UNEXECUTED
+    )
+    unanswered = sum(
+        1
+        for o in outcomes
+        if o.call_error or o.answer_format in (FORMAT_UNPARSED, FORMAT_UNEXECUTED)
+    )
     latencies = [o.latency_seconds for o in outcomes if not o.call_error]
     priced = [o for o in outcomes if o.cost_usd is not None]
 
@@ -120,8 +134,11 @@ def summarise(outcomes: list[Outcome]) -> dict[str, Any]:
         "correct": correct,
         "accuracy": round(correct / n, 4),
         "accuracy_percent_equivalent": round(percent_equivalent / n, 4),
-        "parse_failures": n - len(parsed),
-        "parse_failure_rate": round((n - len(parsed)) / n, 4),
+        "parse_failures": parse_failures,
+        "parse_failure_rate": round(parse_failures / n, 4),
+        "unexecuted": unexecuted,
+        "unanswered": unanswered,
+        "unanswered_rate": round(unanswered / n, 4),
         "call_errors": sum(1 for o in outcomes if o.call_error),
         "truncated": sum(1 for o in outcomes if o.finish_reason == "length"),
         "outcomes": dict(sorted(by_outcome.items())),
@@ -177,7 +194,9 @@ def render(summary: dict[str, Any], config: dict[str, Any], *, complete: bool) -
         "",
         f"accuracy:            {summary['accuracy']:.4f}   (strict, tolerance {config['tolerance']})",
         f"percent-equivalent:  {summary['accuracy_percent_equivalent']:.4f}   (also accepts x100)",
-        f"parse failures:      {summary['parse_failures']} ({summary['parse_failure_rate']:.4f})",
+        f"no answer:           {summary['unanswered']} ({summary['unanswered_rate']:.4f})",
+        f"  unreadable reply:  {summary['parse_failures']}",
+        f"  unexecutable:      {summary['unexecuted']}",
         f"call errors:         {summary['call_errors']}",
         f"cut off by provider: {summary['truncated']}",
         "",
@@ -454,8 +473,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if halted:
         print(f"\nstopped early: {halted}")
-        print(f"resume with: python -m evaluation.run_eval --resume \"{run_dir}\" "
-              f"--split \"{args.split}\" --system {args.system}")
+        print(
+            f'resume with: python -m evaluation.run_eval --resume "{run_dir}" '
+            f'--split "{args.split}" --system {args.system}'
+        )
         return HALTED_EXIT_CODE
 
     return 0

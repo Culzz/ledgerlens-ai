@@ -9,7 +9,7 @@ with no network at all.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from app.services.dataset import FinQAExample
@@ -38,6 +38,10 @@ class Prediction:
     # "length" means the provider cut the answer off. Worth keeping, because a
     # truncated answer looks like a wrong answer and nothing else would say so.
     finish_reason: str | None = None
+    # Whatever else the system thinks belongs in the record. A program-shaped
+    # system puts the program and its steps here; one that answers directly leaves
+    # it empty. Keeping it generic means the runner stays ignorant of both.
+    detail: dict[str, Any] = field(default_factory=dict)
 
     @property
     def text(self) -> str:
@@ -79,6 +83,7 @@ class Prediction:
             attempts=record.get("attempts", 1),
             call_error=record.get("call_error"),
             finish_reason=record.get("finish_reason"),
+            detail=dict(record.get("detail") or {}),
         )
 
 
@@ -89,8 +94,7 @@ class System(Protocol):
     name: str
     prompt_version: str
 
-    def answer(self, example: FinQAExample) -> Prediction:
-        ...
+    def answer(self, example: FinQAExample) -> Prediction: ...
 
 
 def render_table(table: Sequence[Sequence[str]]) -> str:
