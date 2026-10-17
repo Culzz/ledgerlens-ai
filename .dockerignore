@@ -1,0 +1,22 @@
+# Everything the build produces for itself, or copies in from its own stages.
+.git
+.gitignore
+.gitattributes
+.venv
+.pytest_cache
+.ruff_cache
+.mypy_cache
+__pycache__
+*.pyc
+
+# The frontend is built inside the image, from source.
+frontend/node_modules
+frontend/dist
+
+# Downloaded during the build, not carried in.
+data
+
+# Not needed to serve: the harness runs on the host against a run directory.
+evaluation/reports
+
+.env

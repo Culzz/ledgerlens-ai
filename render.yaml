@@ -1,0 +1,32 @@
+# One service, one URL. The image builds the frontend and the API together, which
+# is why there is no CORS and no second deploy target to keep in step.
+#
+# The build runs on Render's machines, so nothing here needs Docker installed
+# locally. Point a Blueprint at this repository and it reads this file.
+services:
+  - type: web
+    name: ledgerlens
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      # A free-tier key. Without one the app still runs and answers nothing,
+      # saying so rather than failing quietly.
+      - key: LLM_PROVIDER
+        value: mistral
+      - key: LLM_MODEL
+        value: ministral-14b-2512
+      # Set in the dashboard, never in the repository.
+      - key: MISTRAL_API_KEY
+        sync: false
+      # The free tier is a per-minute wall as much as a quota, and the app is
+      # behind a public URL, so it paces itself and stops when the budget runs out.
+      - key: LLM_MIN_SECONDS_BETWEEN_CALLS
+        value: "2.0"
+      - key: LLM_MAX_RETRIES
+        value: "4"
+      - key: LLM_FREE_TIER
+        value: "true"
+      - key: LLM_MONTHLY_BUDGET_USD
+        value: "0"
