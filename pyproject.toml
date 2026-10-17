@@ -44,6 +44,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["backend"]
+# The tests live next to the code they cover, which means package discovery
+# finds them too. They are not part of the distribution, and a top-level
+# "tests" package installed into site-packages is a name nobody needs to own.
+exclude = ["tests", "tests.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]

@@ -9,6 +9,9 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+# setuptools stages installed packages here and never cleans it, so a stale
+# build/ can leak files that are no longer in the source tree.
+build/
 .venv/
 venv/
 env/
