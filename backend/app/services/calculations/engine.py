@@ -108,7 +108,7 @@ def _tokenize(program: str) -> list[_Token]:
         if ch == "#":
             m = _REF.match(program, i)
             if not m:
-                raise ProgramSyntaxError(f"bad reference at position {i}: {program[i:i + 8]!r}")
+                raise ProgramSyntaxError(f"bad reference at position {i}: {program[i : i + 8]!r}")
             tokens.append(_Token("ref", m.group(0)))
             i = m.end()
             continue
@@ -124,9 +124,7 @@ def _tokenize(program: str) -> list[_Token]:
                 negative = body.startswith("m")
                 digits = body[1:] if negative else body
                 if not digits or not re.fullmatch(r"\d+(?:\.\d+)?", digits):
-                    raise ProgramSyntaxError(
-                        f"malformed constant {word!r} in {program!r}"
-                    )
+                    raise ProgramSyntaxError(f"malformed constant {word!r} in {program!r}")
                 tokens.append(_Token("number", ("-" if negative else "") + digits))
             else:
                 tokens.append(_Token("name", word))
@@ -183,9 +181,7 @@ class _Parser:
     def _expect(self, kind: str) -> _Token:
         tok = self._next()
         if tok.kind != kind:
-            raise ProgramSyntaxError(
-                f"expected {kind} but found {tok.text!r} in {self._program!r}"
-            )
+            raise ProgramSyntaxError(f"expected {kind} but found {tok.text!r} in {self._program!r}")
         return tok
 
     def parse_expression(self) -> Any:
@@ -194,8 +190,7 @@ class _Parser:
             return Literal(tok.text)
         if tok.kind != "name":
             raise ProgramSyntaxError(
-                f"expected a name, number or reference but found {tok.text!r} "
-                f"in {self._program!r}"
+                f"expected a name, number or reference but found {tok.text!r} in {self._program!r}"
             )
         if tok.text in _TABLE_OPS:
             # Table operations take labels, not expressions, and a label can be
@@ -226,9 +221,7 @@ class _Parser:
         while True:
             tok = self._peek()
             if tok is None:
-                raise ProgramSyntaxError(
-                    f"unterminated table operation in {self._program!r}"
-                )
+                raise ProgramSyntaxError(f"unterminated table operation in {self._program!r}")
             if tok.kind == "rparen":
                 self._next()
                 args.append(Literal(" ".join(current).strip()))
@@ -239,16 +232,12 @@ class _Parser:
                 current = []
                 continue
             if tok.kind == "lparen":
-                raise ProgramSyntaxError(
-                    f"unexpected '(' in table arguments in {self._program!r}"
-                )
+                raise ProgramSyntaxError(f"unexpected '(' in table arguments in {self._program!r}")
             self._next()
             current.append(tok.text)
 
         if any(not a.text for a in args):
-            raise ProgramSyntaxError(
-                f"empty table argument in {self._program!r}"
-            )
+            raise ProgramSyntaxError(f"empty table argument in {self._program!r}")
         return tuple(args)
 
     def parse_program(self) -> list[Call]:
@@ -260,14 +249,20 @@ class _Parser:
             raise ProgramSyntaxError(
                 f"trailing {self._peek().text!r} after program in {self._program!r}"
             )
-        # A bare number is not a step. Every step in a FinQA program is a call,
-        # and accepting a constant here would let a malformed program through as
-        # if it had produced an answer.
+        # A program that is a single figure is allowed, and only that: a lone
+        # ``#0`` reference or a lone name still fails, which is the case this guard
+        # was written for. FinQA's own programs never take this shape - every gold
+        # step computes something - so replaying the split is unaffected.
+        #
+        # It matters on the model-written path. "The after-tax amount is $189m" is a
+        # real answer that the grammar had no way to write, so a correct reading of
+        # the report came back as a failure to produce a program.
+        if len(steps) == 1 and isinstance(steps[0], Literal) and not steps[0].is_reference:
+            return steps
         for step in steps:
             if not isinstance(step, Call):
                 raise ProgramSyntaxError(
-                    f"every step must be a function call, found {step.text!r} "
-                    f"in {self._program!r}"
+                    f"every step must be a function call, found {step.text!r} in {self._program!r}"
                 )
         return steps
 
@@ -346,9 +341,7 @@ def default_table_resolver(table: Table, args: Sequence[Literal]) -> list[Decima
         raise InvalidArgument("table operation used but no table was provided")
 
     if not all(isinstance(a, Literal) for a in (row_label, column_spec)):
-        raise InvalidArgument(
-            "a table operation takes literal labels, not nested calls"
-        )
+        raise InvalidArgument("a table operation takes literal labels, not nested calls")
 
     label = _normalise_label(row_label.text)
     row_index = _find_row(table, label)
@@ -460,6 +453,7 @@ def _parse_number(text: str) -> Decimal:
 # Execution
 # --------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class Step:
     """One executed step, kept so the arithmetic can be shown later."""
@@ -470,6 +464,10 @@ class Step:
     result: Decimal | str
 
     def render(self) -> str:
+        # An empty operation is a step that computed nothing: the program's whole
+        # answer was a figure the report already states.
+        if not self.operation:
+            return f"#{self.index} = {self.result}"
         args = ", ".join(self.arguments)
         return f"#{self.index} = {self.operation}({args}) = {self.result}"
 
@@ -509,9 +507,7 @@ def _decimal(value: Any) -> Decimal:
 
 def _require_numeric(value: Any, operation: str) -> Decimal:
     if isinstance(value, str):
-        raise InvalidArgument(
-            f"{operation} needs numbers but step produced {value!r}"
-        )
+        raise InvalidArgument(f"{operation} needs numbers but step produced {value!r}")
     return _decimal(value)
 
 
@@ -562,8 +558,7 @@ def execute_program(
                 idx = node.reference_index
                 if idx >= len(results):
                     raise UnresolvedReference(
-                        f"#{idx} referenced before it exists "
-                        f"(only {len(results)} step(s) so far)"
+                        f"#{idx} referenced before it exists (only {len(results)} step(s) so far)"
                     )
                 return results[idx]
             return _parse_number(node.text)
@@ -580,9 +575,7 @@ def execute_program(
             literals = []
             for a in node.args:
                 if not isinstance(a, Literal):
-                    raise InvalidArgument(
-                        f"{op} takes literal cell references, got a nested call"
-                    )
+                    raise InvalidArgument(f"{op} takes literal cell references, got a nested call")
                 literals.append(a)
             values = resolver(table, literals) if table else resolver((), literals)
             if not values:
@@ -606,6 +599,10 @@ def execute_program(
     for i, step in enumerate(steps):
         value = evaluate(step)
         results.append(value)
+        if isinstance(step, Literal):
+            # The program was a single figure. Nothing was applied to it.
+            executed.append(Step(i, "", (), value))
+            continue
         rendered_args = tuple(_render_arg(a) for a in step.args)
         executed.append(Step(i, step.name, rendered_args, value))
 
@@ -613,9 +610,9 @@ def execute_program(
         program=program,
         steps=tuple(executed),
         result=results[-1],
-        table_resolver="default" if table_resolver is None else getattr(
-            table_resolver, "__name__", "custom"
-        ),
+        table_resolver="default"
+        if table_resolver is None
+        else getattr(table_resolver, "__name__", "custom"),
     )
 
 
@@ -629,6 +626,7 @@ def _render_arg(node: Any) -> str:
 # --------------------------------------------------------------------------
 # Comparing answers
 # --------------------------------------------------------------------------
+
 
 def answers_match(
     predicted: Any,

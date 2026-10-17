@@ -64,10 +64,24 @@ class TestParsing:
         (step,) = parse_program("  subtract( 150 ,  120 )  ")
         assert step.name == "subtract"
 
-    @pytest.mark.parametrize("bad", ["", "   ", "subtract(150, 120", "subtract 150, 120)", "123", "subtract(150, 120))"])
+    @pytest.mark.parametrize(
+        "bad",
+        ["", "   ", "subtract(150, 120", "subtract 150, 120)", "#0", "revenue", "123, 456"],
+    )
     def test_syntax_errors_are_rejected(self, bad):
         with pytest.raises((ProgramSyntaxError, CalculationError)):
             parse_program(bad)
+
+    def test_a_single_figure_is_a_program(self):
+        # The report already states the answer, so there is nothing to compute.
+        (step,) = parse_program("189")
+        assert step == Literal("189")
+
+    def test_a_lone_reference_is_still_refused(self):
+        # It was written for this case: a reference with no step behind it is not
+        # an answer, it is a program that lost its beginning.
+        with pytest.raises(ProgramSyntaxError, match="every step must be a function call"):
+            parse_program("#0")
 
     def test_unexpected_character_is_reported(self):
         with pytest.raises(ProgramSyntaxError, match="unexpected character"):
@@ -146,7 +160,9 @@ class TestTableOperations:
     )
 
     def test_sum_over_a_whole_row(self):
-        assert execute_program("table_sum(operating income, none)", table=TABLE).result == Decimal(270)
+        assert execute_program("table_sum(operating income, none)", table=TABLE).result == Decimal(
+            270
+        )
 
     def test_max_over_a_whole_row(self):
         assert execute_program("table_max(revenue, none)", table=TABLE).result == Decimal(900)
@@ -161,7 +177,9 @@ class TestTableOperations:
         assert execute_program("table_max(net income, 2023)", table=TABLE).result == Decimal(-1234)
 
     def test_column_restriction_by_label(self):
-        assert execute_program("table_sum(settlements, 2016)", table=self.SETTLEMENTS).result == Decimal(-13)
+        assert execute_program(
+            "table_sum(settlements, 2016)", table=self.SETTLEMENTS
+        ).result == Decimal(-13)
 
     def test_real_average_case_with_footnote_markers(self):
         # From dev.json: AES/2016/page_191.pdf-3, exe_ans -11.33333.
@@ -267,8 +285,8 @@ class TestNumberParsing:
             ("$5,000", Decimal(5000)),
             ("12.5%", Decimal("0.125")),
             ("-42", Decimal(-42)),
-            ("\u22125", Decimal(-5)),      # unicode minus
-            ("\u2014", Decimal(0)),        # em dash means zero here
+            ("\u22125", Decimal(-5)),  # unicode minus
+            ("\u2014", Decimal(0)),  # em dash means zero here
             ("-", Decimal(0)),
             ("0", Decimal(0)),
             (" 1 234 ", Decimal(1234)),
