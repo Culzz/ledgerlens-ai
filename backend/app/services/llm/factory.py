@@ -4,9 +4,11 @@ One place where a provider name turns into a client, so nothing else in the
 codebase needs to know which vendors exist.
 
 Anything that speaks the OpenAI chat-completions shape is a base url and a key,
-which is why the list below is short and boring. Two of the entries earn their
-place by being reachable without a credit card: Google AI Studio issues a Gemini
-key in a couple of clicks, and Groq's free tier needs no card either.
+which is why the list below is short and boring. The entries earn their place by
+being reachable without a credit card, because a daily request ceiling is what
+actually decides whether a split can be evaluated at all: Gemini's free tier
+allows twenty requests a day, Groq's a thousand, and Mistral's free mode has no
+published daily cap at all.
 """
 
 from __future__ import annotations
@@ -26,6 +28,8 @@ COMPATIBLE_ENDPOINTS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
     "groq": "https://api.groq.com/openai/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "mistral": "https://api.mistral.ai/v1",
+    "nvidia": "https://integrate.api.nvidia.com/v1",
     "cerebras": "https://api.cerebras.ai/v1",
     "openrouter": "https://openrouter.ai/api/v1",
 }
@@ -35,6 +39,8 @@ MODEL_LIST_HINTS: dict[str, str] = {
     "openai": "https://platform.openai.com/docs/models",
     "groq": "https://console.groq.com/docs/models",
     "gemini": "https://aistudio.google.com/",
+    "mistral": "https://docs.mistral.ai/getting-started/models/models_overview/",
+    "nvidia": "https://build.nvidia.com/",
     "cerebras": "https://inference-docs.cerebras.ai/models/overview",
     "openrouter": "https://openrouter.ai/models?max_price=0",
 }

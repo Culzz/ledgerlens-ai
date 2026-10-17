@@ -39,7 +39,7 @@ from app.services.llm import (
 )
 from app.services.llm.fake import estimate_tokens
 
-from evaluation.check_provider import KEY_PREFIXES
+from evaluation.check_provider import KEY_PREFIXES, NO_PREFIX_CHECK
 
 # --- helpers -----------------------------------------------------------------
 
@@ -777,7 +777,12 @@ class TestKeyPrefixes:
     """The diagnostic must not cry wolf about a key that is simply a new format."""
 
     def test_every_provider_has_prefixes_to_check(self):
-        assert set(COMPATIBLE_ENDPOINTS) <= set(KEY_PREFIXES)
+        # Every provider is either matched on a prefix or explicitly recorded as
+        # having none, so adding one cannot silently skip the check.
+        assert set(COMPATIBLE_ENDPOINTS) <= set(KEY_PREFIXES) | NO_PREFIX_CHECK
+
+    def test_a_provider_is_not_both_matched_and_exempt(self):
+        assert not set(KEY_PREFIXES) & NO_PREFIX_CHECK
 
     def test_prefixes_are_non_empty_strings(self):
         for name, prefixes in KEY_PREFIXES.items():

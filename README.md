@@ -123,11 +123,12 @@ cp .env.example .env
 No API key needed. The model layer is provider-neutral and defaults to an offline provider, so
 everything runs without one. When you want real answers, set `LLM_PROVIDER` and `LLM_MODEL` in
 `.env` and add a key — the adapter speaks the OpenAI chat-completions shape, so Gemini, Groq,
-OpenRouter and OpenAI are a change to configuration rather than to code.
+Mistral, NVIDIA Build, OpenRouter and OpenAI are a change to configuration rather than to code.
 
-Worth checking a provider's daily request ceiling before pointing a split at it. Gemini's free tier
-is 20 requests a day per model, Groq's is 1,000, and it is the daily limit rather than the
-per-minute one that decides whether a run finishes.
+Worth checking a provider's daily request ceiling before pointing a split at it, because it is the
+daily limit rather than the per-minute one that decides whether a run finishes. Gemini's free tier
+allows 20 requests a day per model, Groq's 1,000, and Mistral's free mode publishes no daily cap but
+runs at roughly a request a second.
 
 ## Plan
 

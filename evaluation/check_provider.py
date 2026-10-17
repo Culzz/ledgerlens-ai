@@ -32,13 +32,21 @@ from app.services.llm import (
 # Recognisable starts, so an obviously wrong key is caught without a request.
 # Gemini lists two on purpose: AI Studio moved from the older "AIza" traffic keys
 # to the newer "AQ." authentication keys, and both kinds are in circulation.
+# A provider that is not listed here simply gets no prefix check, because a lot
+# of keys have no distinctive shape and inventing one would only cry wolf.
 KEY_PREFIXES: dict[str, tuple[str, ...]] = {
     "openai": ("sk-",),
     "groq": ("gsk_",),
     "gemini": ("AIza", "AQ."),
     "openrouter": ("sk-or-",),
+    "nvidia": ("nvapi-",),
     "cerebras": ("csk-",),
 }
+
+# Providers whose keys have no distinctive shape, so there is nothing honest to
+# match against. Listed rather than merely absent, so that adding a provider
+# forces a decision about whether it belongs here or in the table above.
+NO_PREFIX_CHECK: frozenset[str] = frozenset({"mistral"})
 
 # Speech and safety models clutter the list and will never answer a question.
 NOISE = ("whisper", "tts", "guard", "orpheus", "embedding", "moderation")
