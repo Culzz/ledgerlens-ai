@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from evaluation import compare_runs
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "finqa_sample.json"
@@ -106,3 +108,13 @@ class TestCompareRuns:
         assert f"  {Q2}" in text
         assert "only the second answered, e.g." in text
         assert f"  {Q3}" in text
+
+    def test_it_can_describe_itself(self, capsys):
+        # argparse refuses to format a tuple metavar on a positional, and the
+        # only place that shows up is --help. Cheap to check, and the failure it
+        # catches is one nobody would hit until they went looking for usage.
+        with pytest.raises(SystemExit) as exit_info:
+            compare_runs.main(["--help"])
+
+        assert exit_info.value.code == 0
+        assert "FIRST" in capsys.readouterr().out

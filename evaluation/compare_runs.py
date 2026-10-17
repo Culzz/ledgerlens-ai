@@ -107,7 +107,11 @@ def render(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("runs", nargs=2, metavar=("FIRST", "SECOND"), help="two run directories")
+    # Two positionals rather than one with nargs=2 and a tuple metavar. argparse
+    # cannot format the tuple form for a positional, so that spelling works
+    # everywhere except --help, which is where people meet it first.
+    parser.add_argument("first", metavar="FIRST", help="a run directory")
+    parser.add_argument("second", metavar="SECOND", help="the run directory to compare it against")
     parser.add_argument("--split", default="data/finqa/dev.json", help="the split both runs used")
     parser.add_argument("--tolerance", type=float, default=DEFAULT_TOLERANCE)
     return parser.parse_args(argv)
@@ -118,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     examples: list[FinQAExample] = load_split(args.split)
 
     prepared = []
-    for raw in args.runs:
+    for raw in (args.first, args.second):
         run_dir = Path(raw)
         records = load_predictions(run_dir / "predictions.jsonl")
         prepared.append((run_dir, read_config(run_dir), records))
