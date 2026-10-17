@@ -84,7 +84,16 @@ export default function AskPanel({ report, answer, busy, offline, onSubmit, onBr
           )}
 
           {!busy && answer && (
-            <AnswerCard answer={answer} source={report.filename} offline={offline} />
+            <AnswerCard
+              // Keyed by the answer, so a what-if does not carry over onto a new
+              // question. Moving a figure changes what is on screen, and it should
+              // go away the same way the answer it belonged to does.
+              key={`${answer.question}|${answer.program ?? ""}`}
+              answer={answer}
+              documentId={report.id}
+              source={report.filename}
+              offline={offline}
+            />
           )}
 
           {!busy && !answer && (

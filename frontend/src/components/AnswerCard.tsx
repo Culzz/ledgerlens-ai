@@ -1,20 +1,25 @@
 import {
+  ArrowCounterClockwise,
   CaretDown,
   Check,
   Copy,
   MarkdownLogo,
   ShieldCheck,
+  SlidersHorizontal,
   Warning,
   WarningCircle,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import type { Answer, Audit, Operand } from "../api";
+import type { Answer, Audit, FigureEdit, Operand, OperandRole, Recompute } from "../api";
+import { recompute } from "../api";
 import { count, formatAnswer, formatCost, formatSeconds, toMarkdown, trustOf } from "../format";
 
 interface Props {
   answer: Answer;
-  /** The report the question was asked about, for the citation line. */
+  /** The report the question was about, so a what-if runs against the same one. */
+  documentId: string;
+  /** The report's filename, for the citation line in copied markdown. */
   source: string | null;
   /** True when the app is running without a real model configured. */
   offline: boolean;
@@ -24,15 +29,157 @@ interface Props {
 // short enough that it does not look like a selection.
 const FLASH_MS = 1800;
 
-export default function AnswerCard({ answer, source, offline }: Props) {
+// A slider fires on every pixel of a drag, and sixty requests a second is not a
+// thing to do to a server. The run waits for the hand to pause; the figure on
+// screen moves straight away either way.
+const SETTLE_MS = 140;
+
+// How far a figure can be moved, either way. Not a limit on what a what-if can be,
+// just the range a slider can express as one percent per notch.
+const SWING = 50;
+
+// The figures a reader can move: the ones written into the program, as opposed to
+// the row names (labels), the results of earlier steps (references) and whole
+// calculations (nested calls). That is the set the API will take an edit for.
+type FigureRole = Extract<OperandRole, "sourced" | "unsourced" | "constant">;
+
+interface Figure {
+  step: number;
+  operand: number;
+  /** The figure the program used, as the engine read it. */
+  base: number;
+  role: FigureRole;
+  labels: string[];
+}
+
+function keyOf(step: number, operand: number): string {
+  return `${step}:${operand}`;
+}
+
+function figuresIn(audit: Audit | null): Figure[] {
+  if (!audit) return [];
+  const figures: Figure[] = [];
+  for (const step of audit.steps) {
+    step.operands.forEach((operand, index) => {
+      if (operand.value === null) return;
+      if (operand.role !== "sourced" && operand.role !== "unsourced" && operand.role !== "constant") {
+        return;
+      }
+      figures.push({
+        step: step.index,
+        operand: index,
+        base: Number(operand.value),
+        role: operand.role,
+        labels: operand.labels,
+      });
+    });
+  }
+  return figures;
+}
+
+// A slider moves in whole percent, and that is the only place floating point can
+// get in: 150 * 1.1 is 165.00000000000003 in binary arithmetic, and a figure nobody
+// chose turning up in the audit trail is worse than a rounded one. Whatever this
+// returns is exactly what goes to the API and exactly what the trail will show.
+function asFigure(value: number): string {
+  return String(Number(value.toFixed(6)));
+}
+
+function describe(item: Figure): string {
+  if (item.role === "sourced" && item.labels.length > 0) return `from ${item.labels.join(", ")}`;
+  if (item.role === "constant") return "arithmetic";
+  return "not in the report";
+}
+
+export default function AnswerCard({ answer, documentId, source, offline }: Props) {
+  // The answer as the reader has moved it. Nothing here touches the model path: the
+  // program is the one the model already wrote, and the engine runs it again.
+  const [whatIf, setWhatIf] = useState<Recompute | null>(null);
+  const [moved, setMoved] = useState<Record<string, number>>({});
+  const [running, setRunning] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const [flashed, setFlashed] = useState<string | null>(null);
   const [copied, setCopied] = useState<"program" | "markdown" | null>(null);
 
-  const trust = trustOf(answer.audit);
+  // Drags overlap, so a reply that is no longer the newest one is dropped rather
+  // than allowed to overwrite a later figure with an earlier answer.
+  const latest = useRef(0);
+  const timer = useRef<number | null>(null);
+
+  const figures = figuresIn(answer.audit);
+
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  // The display follows the server, so a what-if shows the arithmetic that actually
+  // ran rather than the one that was assumed to.
+  const audit = whatIf ? whatIf.audit : answer.audit;
+  const program = whatIf ? whatIf.program : answer.program;
+  const value = whatIf ? whatIf.answer : answer.answer;
+  const failure = whatIf ? whatIf.failure : answer.failure;
+  const moved_count = Object.values(moved).filter((percent) => percent !== 0).length;
+  const isWhatIf = whatIf !== null;
+
+  const trust = trustOf(audit);
   const cited = answer.evidence.filter((item) => item.cited);
   const offered = answer.evidence.filter((item) => !item.cited);
-  const answered = answer.answer !== null;
-  const figure = answered ? formatAnswer(answer.answer ?? "") : null;
+  const answered = value !== null;
+  const figure = answered ? formatAnswer(value ?? "") : null;
+
+  function move(key: string, percent: number) {
+    const next = { ...moved, [key]: percent };
+    setMoved(next);
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    const id = ++latest.current;
+    timer.current = window.setTimeout(() => void run(id, next), SETTLE_MS);
+  }
+
+  function reset() {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    // Anything in flight is now older than this, so its reply is discarded.
+    latest.current += 1;
+    setMoved({});
+    setWhatIf(null);
+    setProblem(null);
+    setRunning(false);
+  }
+
+  async function run(id: number, next: Record<string, number>) {
+    const edits: FigureEdit[] = figures
+      .map((item) => ({ item, percent: next[keyOf(item.step, item.operand)] ?? 0 }))
+      .filter(({ percent }) => percent !== 0)
+      .map(({ item, percent }) => ({
+        step: item.step,
+        operand: item.operand,
+        value: asFigure(item.base * (1 + percent / 100)),
+      }));
+
+    // Every figure put back where it was, so there is nothing to ask and the card
+    // goes back to the answer the model gave.
+    if (edits.length === 0) {
+      setWhatIf(null);
+      setProblem(null);
+      setRunning(false);
+      return;
+    }
+
+    setRunning(true);
+    try {
+      const result = await recompute(documentId, answer.program ?? "", edits);
+      if (id !== latest.current) return;
+      setWhatIf(result);
+      setProblem(null);
+    } catch (error) {
+      if (id !== latest.current) return;
+      setProblem(error instanceof Error ? error.message : "The program could not be run again.");
+    } finally {
+      if (id === latest.current) setRunning(false);
+    }
+  }
 
   async function copy(text: string, which: "program" | "markdown") {
     try {
@@ -78,6 +225,21 @@ export default function AnswerCard({ answer, source, offline }: Props) {
         </div>
       )}
 
+      {isWhatIf && (
+        <div className="notice notice--whatif">
+          <span>
+            <strong>What-if.</strong> You moved {moved_count === 1 ? "a figure" : `${moved_count} figures`}{" "}
+            the report states, and the same program was run again — no model involved. The badge above
+            is the honest reading of that: the arithmetic is still the engine's, the changed figures
+            are yours.
+          </span>
+          <button className="whatif-reset" onClick={reset}>
+            <ArrowCounterClockwise size={13} weight="bold" />
+            Back to the report
+          </button>
+        </div>
+      )}
+
       {answer.repair_count > 0 && (
         <div className="notice">
           <span>
@@ -88,7 +250,13 @@ export default function AnswerCard({ answer, source, offline }: Props) {
       )}
 
       <div className="verdict">
-        <span className="label">{answered ? "Computed by the engine" : "No answer"}</span>
+        <span className="label">
+          {answered
+            ? isWhatIf
+              ? "What-if, computed by the engine"
+              : "Computed by the engine"
+            : "No answer"}
+        </span>
         <div className={answered ? "verdict-value num" : "verdict-value num verdict-value--none"}>
           {figure ? figure.shown : "—"}
         </div>
@@ -99,12 +267,12 @@ export default function AnswerCard({ answer, source, offline }: Props) {
         )}
         {!answered && (
           <p className="verdict-note">
-            {offline
+            {offline && !isWhatIf
               ? "No model is configured, so no program was written. Set LLM_PROVIDER and a key to get answers."
-              : (answer.failure ?? "The program could not be run against this report.")}
+              : (failure ?? "The program could not be run against this report.")}
           </p>
         )}
-        {answered && answer.reference_answer !== null && (
+        {answered && !isWhatIf && answer.reference_answer !== null && (
           <p className="verdict-note">
             FinQA's annotation for this question is <code>{answer.reference_answer}</code>, shown for
             comparison. The figure above came from the document, not from the annotation.
@@ -112,14 +280,14 @@ export default function AnswerCard({ answer, source, offline }: Props) {
         )}
       </div>
 
-      {answer.program && (
+      {program && (
         <div className="block">
           <span className="label">Program</span>
           <div className="program">
             <div className="program-tools">
               <button
                 className="copy"
-                onClick={() => void copy(answer.program ?? "", "program")}
+                onClick={() => void copy(program ?? "", "program")}
                 aria-label="Copy the program"
               >
                 {copied === "program" ? <Check size={14} weight="bold" /> : <Copy size={14} />}
@@ -136,9 +304,19 @@ export default function AnswerCard({ answer, source, offline }: Props) {
                 )}
               </button>
             </div>
-            <pre>{answer.program}</pre>
+            <pre>{program}</pre>
           </div>
-          {answer.audit && <AuditTrail audit={answer.audit} onCite={flash} />}
+          {audit && (
+            <AuditTrail
+              audit={audit}
+              figures={figures}
+              moved={moved}
+              running={running}
+              problem={problem}
+              onCite={flash}
+              onMove={move}
+            />
+          )}
         </div>
       )}
 
@@ -182,9 +360,25 @@ export default function AnswerCard({ answer, source, offline }: Props) {
 }
 
 // The working, with every figure tied back to the row it was read from. Folded
-// away by default: it is the thing that makes an answer checkable, and the
-// answer is what a reader wants first.
-function AuditTrail({ audit, onCite }: { audit: Audit; onCite: (label: string) => void }) {
+// away by default: it is the thing that makes an answer checkable, and the answer
+// is what a reader wants first.
+function AuditTrail({
+  audit,
+  figures,
+  moved,
+  running,
+  problem,
+  onCite,
+  onMove,
+}: {
+  audit: Audit;
+  figures: Figure[];
+  moved: Record<string, number>;
+  running: boolean;
+  problem: string | null;
+  onCite: (label: string) => void;
+  onMove: (key: string, percent: number) => void;
+}) {
   const [open, setOpen] = useState(false);
 
   // The three counts add up to the literals, and the labels keep them apart: a
@@ -243,6 +437,59 @@ function AuditTrail({ audit, onCite }: { audit: Audit; onCite: (label: string) =
               );
             })}
           </ol>
+
+          {figures.length > 0 && (
+            <div className="whatif">
+              <div className="whatif-head">
+                <span className="whatif-title">
+                  <SlidersHorizontal size={13} weight="bold" />
+                  What if
+                </span>
+                <span className="whatif-hint">
+                  Move a figure and the same program runs again. Nothing is sent to a model.
+                </span>
+              </div>
+              <ul className="whatif-list">
+                {figures.map((item) => {
+                  const key = keyOf(item.step, item.operand);
+                  const percent = moved[key] ?? 0;
+                  // The figure on screen is the one that would be sent, so the number
+                  // a reader drags to is the number the arithmetic will use.
+                  const face = formatAnswer(asFigure(item.base * (1 + percent / 100)));
+                  return (
+                    <li className="whatif-row" key={key} data-moved={percent !== 0}>
+                      <div className="whatif-where">
+                        <span className="idx num">#{item.step}</span>
+                        <span className="whatif-figure num" title={face.exact ?? undefined}>
+                          {face.shown}
+                        </span>
+                        <span className="whatif-src">{describe(item)}</span>
+                      </div>
+                      <div className="whatif-slide">
+                        <input
+                          type="range"
+                          min={-SWING}
+                          max={SWING}
+                          step={1}
+                          value={percent}
+                          onChange={(event) => onMove(key, Number(event.target.value))}
+                          // Named by the figure and its position rather than just the
+                          // step, because a step usually has more than one of them and
+                          // a screen reader listing "Change the figure at step 0"
+                          // twice is a choice between two identical controls.
+                          aria-label={`Change the figure ${face.shown} at step ${item.step}, argument ${item.operand + 1}`}
+                        />
+                        <span className={running ? "whatif-pct num is-running" : "whatif-pct num"}>
+                          {percent > 0 ? `+${percent}%` : `${percent}%`}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              {problem && <p className="whatif-problem">{problem}</p>}
+            </div>
+          )}
         </div>
       )}
     </div>

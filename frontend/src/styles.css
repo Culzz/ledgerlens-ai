@@ -1136,6 +1136,179 @@ table.statement tr:last-child td {
   text-transform: uppercase;
 }
 
+/* --- what if --------------------------------------------------------------- */
+
+/* The controls under the working. Somewhere in this card an input is expected
+   rather than a result, and this is it: the reader moves a figure and the engine
+   runs the same program again. */
+.whatif {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.whatif-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+
+.whatif-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.whatif-title svg {
+  color: var(--ink-faint);
+}
+
+.whatif-hint {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--ink-faint);
+}
+
+.whatif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.whatif-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.whatif-row:last-child {
+  border-bottom: 0;
+}
+
+.whatif-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.whatif-where .idx {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+}
+
+.whatif-figure {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A moved figure is the reader's own rather than the report's, so it is coloured
+   the way an unverified one is. Two inches up, the badge says the same thing. */
+.whatif-row[data-moved="true"] .whatif-figure,
+.whatif-row[data-moved="true"] .whatif-pct {
+  color: var(--caution);
+}
+
+.whatif-src {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.whatif-slide {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The whole box is the target, which is what a thumb-sized control needs on a
+   phone; the browser draws its own much thinner track inside it. */
+.whatif-slide input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  height: var(--tap);
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  background: transparent;
+}
+
+.whatif-slide input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.whatif-pct {
+  flex: none;
+  width: 3.8em;
+  text-align: right;
+  font-size: 11px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* While a run is out, the percentage is the only part not yet confirmed by the
+   engine, so it is the part that dims. */
+.whatif-pct.is-running {
+  opacity: 0.45;
+}
+
+.whatif-problem {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--accent);
+}
+
+/* A what-if is not a warning, but it is the one state where the figure on screen
+   is not the document's, so it takes the caution colour rather than the grey of
+   an ordinary notice. */
+.notice--whatif {
+  align-items: center;
+  background: #fdfaf0;
+  border-color: #ecdfc0;
+  border-left-color: var(--caution);
+}
+
+.notice--whatif strong {
+  color: var(--caution);
+}
+
+.whatif-reset {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  /* The same height as the audit toggle it sits near, rather than the 32px a
+     secondary button would take: this is the one control on a phone that undoes
+     a what-if, and it is the width of a thumb. */
+  min-height: var(--tap);
+  padding: 6px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.whatif-reset:hover {
+  border-color: var(--caution);
+  color: var(--caution);
+}
+
 /* The row a citation pointed at, lit for a moment. Not a selection: it fades,
    so a second click on the same citation still shows something happened. */
 .evidence li.is-flash {

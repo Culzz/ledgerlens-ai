@@ -133,3 +133,34 @@ export function ask(documentId: string, question: string): Promise<Answer> {
     body: JSON.stringify({ document_id: documentId, question }),
   });
 }
+
+/** One figure to write differently, named by where it sits in the program. */
+export interface FigureEdit {
+  step: number;
+  operand: number;
+  /** A number only. The engine parses it and prints it back, so a label or a
+   *  reference sent here is refused rather than run. */
+  value: string;
+}
+
+/** The same program with figures changed. No model is involved in answering it. */
+export interface Recompute {
+  program: string;
+  answer: string | null;
+  /** Absent only when the arithmetic itself has no answer, such as a division by
+   *  a zero someone just typed. */
+  audit: Audit | null;
+  failure: string | null;
+}
+
+export function recompute(
+  documentId: string,
+  program: string,
+  edits: FigureEdit[],
+): Promise<Recompute> {
+  return request<Recompute>("/api/recompute", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ document_id: documentId, program, edits }),
+  });
+}
