@@ -113,6 +113,15 @@ class TestResolve:
 
         assert grounded.answer == "300"
 
+    def test_a_single_figure_is_an_answer(self):
+        # The report states the figure outright and there is nothing to compute.
+        # Refusing this turned a correct reading of the document into a failure.
+        retrieval = orchestrator().retrieve(DOCUMENT, "revenue")
+        grounded = orchestrator().resolve("q", reply("1200"), DOCUMENT, retrieval.by_label)
+
+        assert grounded.answer == "1200"
+        assert grounded.steps == ("#0 = 1200",)
+
     def test_a_table_step_reads_the_row_it_names(self):
         retrieval = orchestrator().retrieve(DOCUMENT, "revenue")
         grounded = orchestrator().resolve(
@@ -188,10 +197,12 @@ class TestAnswer:
         assert grounded.answer == "300"
         assert grounded.completion is not None
         assert grounded.completion.model == "scripted-model"
-        # One model call, and the prompt carried the evidence rather than the
+        # One model call, and the prompt carried the retrieved rows rather than the
         # whole document.
         assert len(provider.calls) == 1
-        assert "revenue 2019 1200 2018 900" in provider.calls[0][1].content
+        prompt = provider.calls[0][1].content
+        assert "table_1: revenue | 1200 | 900" in prompt
+        assert "text_0: Revenue rose in 2019." in prompt
 
     def test_a_failed_program_still_reports_what_it_tried_to_read(self):
         provider = ScriptedProvider(reply("table_sum(profit, none)", evidence=["table_1"]))

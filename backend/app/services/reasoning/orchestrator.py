@@ -26,11 +26,11 @@ from typing import Any
 from app.services.calculations import CalculationError, execute_program
 from app.services.dataset import FinQAExample
 from app.services.llm import Completion, LLMProvider, Message, system, user
-from app.services.retrieval import BM25Index, DocumentLike, EvidenceUnit, build_units
+from app.services.retrieval import TABLE, BM25Index, DocumentLike, EvidenceUnit, build_units
 
 from .answers import extract_json_object
 
-PROMPT_VERSION = "program-v1"
+PROMPT_VERSION = "program-v3"
 
 # How many evidence units reach the prompt. Ten is not a guess: the retrieval
 # measurement on dev put complete@10 at 0.666, so a tenth unit is still buying
@@ -41,38 +41,45 @@ DEFAULT_TOP_K = 10
 # answer, so this is generous rather than tight.
 DEFAULT_MAX_TOKENS = 1024
 
-PROGRAM_SYSTEM = """You answer questions about a financial document by writing a \
-short program.
+PROGRAM_SYSTEM = """You answer questions about a financial report by writing a short program.
 
-You are given some of the document's table rows and narrative lines as evidence, \
-each with a label. You do not do the arithmetic. You write a program that does it, \
-and a calculator runs the program.
+You are given part of the report: some of its table rows and some of its narrative lines. Each piece of evidence has a name, like table_3 or text_7.
 
-A program is a comma-separated list of calls. Each call is one step, and #0, #1 and \
-so on refer to the result of an earlier step.
+A program is a comma-separated list of steps. #0, #1 and so on refer to the result of an earlier step.
 
-Numeric steps:
+Numbers:
   add(a, b)  subtract(a, b)  multiply(a, b)  divide(a, b)  exp(a, b)
-
-Comparison, returning yes or no:
+A comparison, giving yes or no:
   greater(a, b)
 
-Table steps, naming a row by the label it has in the table and the column you want \
-or the word none for the whole row:
-  table_sum(row, column)  table_average(row, column)
-  table_max(row, column)  table_min(row, column)
+Every step takes plain numbers, taken from the report. Most questions are answered this way:
 
-Every step must be one of these calls. Use only figures that appear in the \
-evidence, and name rows and columns exactly as the evidence spells them.
+  subtract(11503, 10815)
+  divide(637, 5)
+
+Write a figure as digits and a decimal point, nothing else. Drop the currency symbol, drop thousands separators, and do not round: if the arithmetic comes to 127.4 then the answer is 127.4, not 127.
+
+If the answer is a single figure the report already states, the program is that figure on its own:
+
+  189
+
+When one row has to be aggregated across its columns, use a table call. The row is named by its first cell, written as the table writes it, and the column is a header from the table, or the word none for the whole row:
+
+  table_sum(total obligations, none)
+  table_average(settlements, none)
+
+The names of the evidence - table_3, text_7 - are for citing in the evidence list. They are never part of the program:
+
+  wrong:  divide(table_1, table_2)
+  right:  divide(193.5, 100)
 
 Reply with one JSON object and nothing else:
 
 {"reasoning": "<one short sentence>",
  "program": "<the program>",
- "evidence": ["<label>", "<label>"]}
+ "evidence": ["table_3", "text_7"]}
 
-The evidence field lists the labels the program reads. Do not include the answer: \
-the program's last step is the answer."""
+The evidence list names the rows you read. Do not state the answer anywhere else: the last step of the program is the answer."""
 
 
 @dataclass(frozen=True)
@@ -125,6 +132,10 @@ class GroundedAnswer:
     # The model call behind it, kept so a caller can show what a question cost.
     # Absent when a stored reply is replayed through ``resolve``.
     completion: Completion | None = None
+    # Everything retrieval put in the prompt. The citations above are the subset
+    # the reply said it used; keeping both is what lets a UI show the evidence and
+    # mark what the answer rested on.
+    offered: tuple[Citation, ...] = ()
     # Retrieval found nothing and the whole document went into the prompt.
     retrieval_fallback: bool = False
 
@@ -172,15 +183,55 @@ def label_for(unit: EvidenceUnit) -> str:
     return f"{unit.kind}_{unit.index}"
 
 
+def _index_of(label: str) -> int | None:
+    """The row or line number behind a ``table_3`` or ``text_7`` label."""
+    _, _, raw = label.partition("_")
+    return int(raw) if raw.isdigit() else None
+
+
+def _render_evidence(document: DocumentLike, evidence: tuple[Citation, ...]) -> list[str]:
+    """Lay the evidence out the way it sits in the report.
+
+    Table rows are printed as whole rows, pipes between cells, so a value stays
+    under its own header on the way down. The first version of this handed the
+    model the rows as flattened lines of text, and it read the labels as arguments
+    - ``table_sum(table_3, payments volume)`` - which the engine rejected. Showing
+    the row and naming it on the left is one less way to misread the table.
+    """
+    table: list[str] = []
+    narrative: list[str] = []
+
+    for citation in evidence:
+        if citation.kind != TABLE:
+            narrative.append(f"  {citation.label}: {citation.text}")
+            continue
+
+        index = _index_of(citation.label)
+        row = document.table[index] if index is not None and index < len(document.table) else None
+        cells = " | ".join(str(cell).strip() for cell in row) if row else citation.text
+        table.append(f"  {citation.label}: {cells}")
+
+    lines: list[str] = []
+    if table:
+        lines.append("Table rows:")
+        lines.extend(table)
+        lines.append("")
+    if narrative:
+        lines.append("Narrative:")
+        lines.extend(narrative)
+        lines.append("")
+    return lines
+
+
 def build_program_messages(
     document: DocumentLike,
     evidence: tuple[Citation, ...],
     question: str,
 ) -> list[Message]:
-    """The prompt: the evidence labels, then the question, and nothing else."""
-    lines = [f"Document: {document.id}", "", "Evidence:"]
-    lines.extend(f"  {citation.label}: {citation.text}" for citation in evidence)
-    lines.extend(["", f"Question: {question}"])
+    """The prompt: the retrieved evidence, then the question, and nothing else."""
+    lines = [f"Report: {document.id}", ""]
+    lines.extend(_render_evidence(document, evidence))
+    lines.append(f"Question: {question}")
     return [system(PROGRAM_SYSTEM), user("\n".join(lines))]
 
 
@@ -257,7 +308,12 @@ class Orchestrator:
             max_tokens=self.max_tokens,
         )
         grounded = self.resolve(question, completion.text, document, retrieval.by_label)
-        return replace(grounded, completion=completion, retrieval_fallback=retrieval.fallback)
+        return replace(
+            grounded,
+            completion=completion,
+            offered=retrieval.citations,
+            retrieval_fallback=retrieval.fallback,
+        )
 
     def resolve(
         self,
