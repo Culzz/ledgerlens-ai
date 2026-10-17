@@ -7,11 +7,13 @@ and choosing one silently would move the headline number.
 parsed, within a tolerance. This is FinQA's own convention, so a number measured
 this way can be placed next to published ones.
 
-**Percent-equivalent.** The above, or one side is a hundred times the other.
-FinQA stores a percentage answer as a fraction — ``0.935`` for 93.5% — while
-models routinely answer ``93.5%``. Reading that as a wrong answer overstates the
-error rate, and reading it as right without saying so overstates the accuracy.
-So both counts are kept and the gap between them is visible in every report.
+**Percent-equivalent.** The above, or the prediction is a hundred times the
+reference. That direction and not the other, because it is the direction FinQA's
+own storage produces: the reference keeps a percentage as a fraction, ``0.935``
+for 93.5%, while a model asked for a percentage answers ``93.5``. Calling that
+wrong overstates the error rate, and calling it right without saying so
+overstates the accuracy, so both counts are kept and the gap is printed in every
+report.
 
 Answers that are not numbers, such as the ``yes``/``no`` questions, are compared
 as normalised text under the strict rule and are unaffected by the percent rule.
