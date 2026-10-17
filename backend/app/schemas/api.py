@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+# The engine's own limit, imported rather than restated so a request cannot be
+# accepted here that the engine would refuse for length.
+from app.services.calculations import MAX_STEPS
+
 
 class HealthResponse(BaseModel):
     status: str
@@ -120,3 +124,39 @@ class AskResponse(BaseModel):
     # Looked up after the answer is computed, for display only. The answering path
     # never sees it.
     reference_answer: str | None
+
+
+class FigureEdit(BaseModel):
+    """One figure to write differently, named by where it sits in the program.
+
+    A position rather than a value: a program that uses 150 in two places has two
+    places to change, and changing "the 150" would have to guess which.
+    """
+
+    step: int = Field(ge=0, le=MAX_STEPS - 1)
+    operand: int = Field(ge=0, le=MAX_STEPS - 1)
+    # A number only. The engine parses it and prints it back, so nothing sent here
+    # can arrive as program syntax.
+    value: str = Field(min_length=1, max_length=40)
+
+
+class RecomputeRequest(BaseModel):
+    """The same program with some of its figures changed. No model is called."""
+
+    document_id: str = Field(min_length=1, max_length=200)
+    program: str = Field(min_length=1, max_length=2000)
+    edits: list[FigureEdit] = Field(min_length=1, max_length=32)
+
+
+class RecomputeResponse(BaseModel):
+    program: str
+    # The engine's result. It stands even when the verdict below says the figures are
+    # no longer the report's - a changed figure is a question, not an answer, and a
+    # what-if has to be allowed to leave the report.
+    answer: str | None
+    # Absent only when the arithmetic itself has no answer, such as a division by the
+    # zero someone just typed. That is a legitimate hypothetical rather than a bad
+    # request, so it comes back as a failure on a 200 the way a program that will not
+    # run does on /api/ask.
+    audit: GroundingOut | None = None
+    failure: str | None = None

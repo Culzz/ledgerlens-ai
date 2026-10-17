@@ -7,7 +7,9 @@ operations, the reference encoding, number parsing and the failure modes.
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from app.services.calculations import (
@@ -24,6 +26,7 @@ from app.services.calculations import (
     default_table_resolver,
     execute_program,
     parse_program,
+    substitute_figures,
 )
 from app.services.calculations.engine import parse_number
 
@@ -33,6 +36,101 @@ TABLE = (
     ("Revenue", "900", "800"),
     ("Net income", "(1,234)", "2,500"),
 )
+
+
+class TestSubstitutingFigures:
+    """Rewriting a program's figures, which is what makes a what-if askable.
+
+    The value is never pasted in as text, so these are mostly about what the
+    function refuses. Each expectation was checked by reading what it produces.
+    """
+
+    def test_a_figure_is_replaced_by_where_it_sits(self):
+        assert substitute_figures("subtract(150, 120)", [(0, 1, "7")]) == "subtract(150, 7)"
+
+    def test_the_same_value_in_two_places_is_two_places(self):
+        # Which is the reason an edit names a position rather than a value: "change
+        # the 150" would have to guess, and a guess here silently changes arithmetic.
+        assert (
+            substitute_figures("multiply(150, 2), add(#0, 150)", [(1, 1, "300")])
+            == "multiply(150, 2), add(#0, 300)"
+        )
+
+    def test_the_first_figure_can_be_changed_without_touching_the_second(self):
+        assert substitute_figures("multiply(150, 2), add(#0, 150)", [(0, 0, "1")]) == (
+            "multiply(1, 2), add(#0, 150)"
+        )
+
+    def test_two_edits_apply_together(self):
+        assert substitute_figures("subtract(150, 120)", [(0, 0, "1000"), (0, 1, "250")]) == (
+            "subtract(1000, 250)"
+        )
+
+    def test_a_thousands_separator_is_written_back_as_a_figure(self):
+        assert substitute_figures("subtract(150, 120)", [(0, 0, "1,234")]) == "subtract(1234, 120)"
+
+    def test_an_accounting_negative_becomes_a_signed_figure(self):
+        assert substitute_figures("add(150, 120)", [(0, 1, "(500)")]) == "add(150, -500)"
+
+    def test_an_exponent_is_written_out_in_full(self):
+        # The tokenizer would split 1E+5 into a number and a name, so the value goes
+        # back as digits. This is the case that would have produced a broken program.
+        assert substitute_figures("add(1, 2)", [(0, 1, "1e5")]) == "add(1, 100000)"
+
+    @pytest.mark.parametrize("value", ["Revenue", "#0", "", "add(1, 2)", "?", "--5"])
+    def test_a_value_that_is_not_a_number_is_refused(self, value):
+        with pytest.raises(InvalidArgument):
+            substitute_figures("subtract(150, 120)", [(0, 0, value)])
+
+    def test_a_position_the_program_does_not_have_is_refused(self):
+        with pytest.raises(InvalidArgument, match="no step 4"):
+            substitute_figures("subtract(150, 120)", [(4, 0, "1")])
+
+    def test_an_argument_the_step_does_not_have_is_refused(self):
+        with pytest.raises(InvalidArgument, match="no argument 5"):
+            substitute_figures("subtract(150, 120)", [(0, 5, "1")])
+
+    def test_a_row_selection_has_no_figure_to_change(self):
+        with pytest.raises(InvalidArgument, match="selects a row by its label"):
+            substitute_figures("table_sum(Operating income, none)", [(0, 0, "1")])
+
+    def test_a_computed_argument_cannot_be_replaced_by_a_number(self):
+        # Replacing a nested call wholesale would drop the arithmetic inside it from
+        # the program without saying so, so it is refused rather than flattened.
+        with pytest.raises(InvalidArgument, match="a calculation rather than a figure"):
+            substitute_figures("divide(multiply(2, 3), 4)", [(0, 0, "7")])
+
+    def test_a_single_figure_program_can_be_changed(self):
+        assert substitute_figures("150", [(0, 0, "200")]) == "200"
+
+    def test_a_program_that_will_not_parse_is_refused(self):
+        with pytest.raises(ProgramSyntaxError):
+            substitute_figures("subtract(150 120)", [(0, 0, "1")])
+
+    def test_the_result_is_a_program_that_runs_and_gives_the_new_arithmetic(self):
+        # The round trip that matters: rewrite, execute, and the answer follows the
+        # figure that was written in.
+        program = substitute_figures("subtract(150, 120)", [(0, 0, "200")])
+        assert execute_program(program).result == Decimal(80)
+
+    def test_every_gold_program_round_trips_unchanged(self):
+        # A rewrite with no edits has to be the program it started as, or a what-if
+        # would be measuring the rewriter rather than the change it made.
+        #
+        # Compared as trees rather than as text, and that is not a loosening. FinQA
+        # writes a named constant as const_100 and the engine reads it as the number
+        # 100, so a program that goes back out through the renderer comes back spelled
+        # the engine's way. What has to be unchanged is what it means - 701 of these
+        # programs spell a constant the FinQA way.
+        path = Path(__file__).resolve().parents[3] / "data" / "finqa" / "dev.json"
+        if not path.exists():
+            pytest.skip("the FinQA split is not downloaded")
+        records = json.loads(path.read_text(encoding="utf-8"))
+
+        for record in records:
+            program = record["qa"]["program"]
+            assert parse_program(substitute_figures(program, [])) == parse_program(program)
+        assert records
 
 
 class TestParsing:

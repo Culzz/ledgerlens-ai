@@ -1,6 +1,7 @@
 from .engine import (
     GREATER_FALSE,
     GREATER_TRUE,
+    MAX_STEPS,
     TABLE_OPERATIONS,
     CalculationTrace,
     Call,
@@ -11,6 +12,7 @@ from .engine import (
     execute_program,
     parse_number,
     parse_program,
+    substitute_figures,
 )
 from .errors import (
     CalculationError,
@@ -25,6 +27,7 @@ __all__ = [
     "FINANCE_PRIMITIVES",
     "GREATER_FALSE",
     "GREATER_TRUE",
+    "MAX_STEPS",
     "TABLE_OPERATIONS",
     "CalculationError",
     "CalculationTrace",
@@ -42,4 +45,5 @@ __all__ = [
     "execute_program",
     "parse_number",
     "parse_program",
+    "substitute_figures",
 ]

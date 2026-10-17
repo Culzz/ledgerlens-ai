@@ -40,7 +40,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation
 from typing import Any
 
 from .errors import (
@@ -601,7 +601,17 @@ def execute_program(
         raise UnsupportedOperation(f"unknown operation {op!r}")
 
     for i, step in enumerate(steps):
-        value = evaluate(step)
+        try:
+            value = evaluate(step)
+        except DecimalException as exc:
+            # The last line of the contract this function documents: it raises
+            # CalculationError or a subclass, and nothing else. Decimal has its own
+            # exception tree - Overflow above all, from an exponent like
+            # exp(2, 10000000) - and one of those escaping would be a failed request
+            # rather than a message the repair loop can act on.
+            raise InvalidArgument(
+                f"step {i} went outside the range the engine computes in ({type(exc).__name__})",
+            ) from exc
         results.append(value)
         if isinstance(step, Literal):
             # The program was a single figure. Nothing was applied to it.
@@ -625,6 +635,68 @@ def _render_arg(node: Any) -> str:
         return node.text
     inner = ", ".join(_render_arg(a) for a in node.args)
     return f"{node.name}({inner})"
+
+
+def substitute_figures(
+    program: str,
+    edits: Sequence[tuple[int, int, str]],
+) -> str:
+    """Return the program with some of its figures written differently.
+
+    An edit is ``(step, operand, value)``, naming the figure by where it sits rather
+    than by what it says - a program that uses 150 twice has two places to change
+    and they are not the same place.
+
+    The value is parsed and printed again by the engine instead of being pasted in
+    as text, which is the point: nothing a caller sends reaches the program as
+    syntax. ``1,234`` becomes ``1234``, ``(500)`` becomes ``-500``, and a label, a
+    call or a ``#0`` reference is refused because it is not a number.
+
+    A what-if is the same program with a different input, so this is what makes one
+    askable without a model being involved at all.
+    """
+    steps = parse_program(program)
+    wanted: dict[int, dict[int, str]] = {}
+
+    for step_index, operand_index, value in edits:
+        if step_index >= len(steps):
+            raise InvalidArgument(
+                f"the program has {len(steps)} step(s), so there is no step {step_index}",
+            )
+        step = steps[step_index]
+        if isinstance(step, Literal):
+            arguments: Sequence[Any] = (step,)
+        elif step.name in TABLE_OPERATIONS:
+            raise InvalidArgument(
+                f"step {step_index} is {step.name}, which selects a row by its label "
+                "rather than using a figure, so there is nothing in it to change",
+            )
+        else:
+            arguments = step.args
+
+        if operand_index >= len(arguments):
+            raise InvalidArgument(
+                f"step {step_index} has {len(arguments)} argument(s), "
+                f"so there is no argument {operand_index}",
+            )
+        if not isinstance(arguments[operand_index], Literal):
+            raise InvalidArgument(
+                f"step {step_index} argument {operand_index} is a calculation rather "
+                "than a figure, so it cannot be replaced by a number",
+            )
+        # parse_number decides whether this is a figure at all, and format(..., "f")
+        # writes it back without an exponent, which the tokenizer would split.
+        wanted.setdefault(step_index, {})[operand_index] = format(parse_number(value), "f")
+
+    rendered: list[str] = []
+    for step_index, step in enumerate(steps):
+        overrides = wanted.get(step_index, {})
+        if isinstance(step, Literal):
+            rendered.append(overrides.get(0, step.text))
+            continue
+        parts = [overrides.get(i, _render_arg(arg)) for i, arg in enumerate(step.args)]
+        rendered.append(f"{step.name}({', '.join(parts)})")
+    return ", ".join(rendered)
 
 
 # --------------------------------------------------------------------------

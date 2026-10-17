@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import ask, documents
+from app.api.routes import ask, documents, recompute
 from app.core.config import get_settings
 
 DESCRIPTION = """\
@@ -42,6 +42,7 @@ def create_app() -> FastAPI:
 
     app.include_router(documents.router, prefix="/api")
     app.include_router(ask.router, prefix="/api")
+    app.include_router(recompute.router, prefix="/api")
 
     dist = Path(settings.frontend_dist)
     if dist.is_dir():

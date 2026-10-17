@@ -251,6 +251,180 @@ class TestAsk:
         assert response.status_code == 422
 
 
+class TestRecompute:
+    """The same program with a figure changed, answered without a model.
+
+    This is the other half of the answer being a program rather than a sentence. A
+    follow-up about a number is a change of input, and the engine answers it in the
+    time it takes to do the arithmetic - no provider, no tokens, no waiting.
+    """
+
+    def edit(self, client, program, edits, document=DOCUMENT):
+        return client.post(
+            "/api/recompute",
+            json={"document_id": document, "program": program, "edits": edits},
+        )
+
+    def test_changing_a_figure_reruns_the_program(self, client):
+        response = self.edit(
+            client, "subtract(150, 120)", [{"step": 0, "operand": 0, "value": "200"}]
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["program"] == "subtract(200, 120)"
+        assert body["answer"] == "80"
+        assert body["failure"] is None
+
+    def test_it_does_not_ask_the_model(self, client, monkeypatch):
+        # The client is wired to a provider that answers subtract(150, 120). This is a
+        # different program and the answer follows the program, which it only can if
+        # no model was asked. Belt and braces: the orchestrator factory is replaced
+        # with something that fails loudly.
+        def refuse():
+            raise AssertionError("recompute must not reach the model path")
+
+        monkeypatch.setattr(ask_routes, "get_orchestrator", refuse)
+
+        body = self.edit(
+            client, "multiply(150, 2)", [{"step": 0, "operand": 0, "value": "160"}]
+        ).json()
+
+        assert body["answer"] == "320"
+
+    def test_a_figure_the_report_does_not_state_is_computed_anyway(self, client):
+        # A what-if has changed a figure the report states, so the new figure is not
+        # in the report by definition. The verdict says so and the answer still
+        # stands. Refusing it would make a what-if impossible; returning it without
+        # the verdict would let it look grounded.
+        body = self.edit(
+            client, "multiply(150, 2)", [{"step": 0, "operand": 0, "value": "200"}]
+        ).json()
+
+        assert body["answer"] == "400"
+        assert body["audit"]["verdict"] == "ungrounded"
+        assert "200" in body["audit"]["unsourced"]
+
+    def test_the_figures_left_alone_keep_their_citation(self, client):
+        body = self.edit(
+            client, "subtract(150, 120)", [{"step": 0, "operand": 0, "value": "200"}]
+        ).json()
+
+        assert body["audit"]["verdict"] == "partly_grounded"
+        operands = [o for step in body["audit"]["steps"] for o in step["operands"]]
+        changed = next(o for o in operands if o["text"].startswith("200"))
+        untouched = next(o for o in operands if o["text"].startswith("120"))
+        assert changed["role"] == "unsourced"
+        assert changed["labels"] == []
+        assert untouched["role"] == "sourced"
+        assert untouched["labels"]
+
+    def test_the_trail_shows_the_program_that_ran(self, client):
+        body = self.edit(
+            client, "subtract(150, 120)", [{"step": 0, "operand": 0, "value": "200"}]
+        ).json()
+
+        render = body["audit"]["steps"][0]["render"]
+        # The step is the edited one, the figure that came from the report keeps its
+        # citation, and the figure that did not is marked as such on the same line.
+        assert "subtract(" in render
+        assert "200 (unverified)" in render
+        assert "120 [table_1]" in render
+
+    def test_a_thousands_separator_is_rewritten_as_a_figure(self, client):
+        body = self.edit(
+            client, "subtract(150, 120)", [{"step": 0, "operand": 0, "value": "1,234"}]
+        ).json()
+
+        assert body["program"] == "subtract(1234, 120)"
+        assert body["answer"] == "1114"
+
+    def test_an_accounting_negative_is_understood(self, client):
+        body = self.edit(
+            client, "add(150, 120)", [{"step": 0, "operand": 1, "value": "(500)"}]
+        ).json()
+
+        assert body["program"] == "add(150, -500)"
+        assert body["answer"] == "-350"
+
+    def test_two_figures_at_once(self, client):
+        body = self.edit(
+            client,
+            "subtract(150, 120)",
+            [
+                {"step": 0, "operand": 0, "value": "1000"},
+                {"step": 0, "operand": 1, "value": "250"},
+            ],
+        ).json()
+
+        assert body["program"] == "subtract(1000, 250)"
+        assert body["answer"] == "750"
+
+    def test_a_label_cannot_be_smuggled_in_as_a_figure(self, client):
+        # The value is parsed and printed again rather than pasted into the program,
+        # so nothing sent here arrives as program syntax.
+        response = self.edit(
+            client, "subtract(150, 120)", [{"step": 0, "operand": 0, "value": "Revenue"}]
+        )
+
+        assert response.status_code == 422
+        assert "cannot parse" in response.json()["detail"]
+
+    def test_a_reference_cannot_be_smuggled_in_as_a_figure(self, client):
+        response = self.edit(
+            client, "subtract(150, 120)", [{"step": 0, "operand": 0, "value": "#0"}]
+        )
+
+        assert response.status_code == 422
+
+    def test_a_position_the_program_does_not_have_is_refused(self, client):
+        response = self.edit(
+            client, "subtract(150, 120)", [{"step": 4, "operand": 0, "value": "1"}]
+        )
+
+        assert response.status_code == 422
+        assert "no step 4" in response.json()["detail"]
+
+    def test_a_row_selection_has_no_figure_to_change(self, client):
+        response = self.edit(
+            client,
+            "table_sum(Operating income, none)",
+            [{"step": 0, "operand": 0, "value": "1"}],
+        )
+
+        assert response.status_code == 422
+        assert "selects a row by its label" in response.json()["detail"]
+
+    def test_a_program_that_will_not_parse_is_refused(self, client):
+        response = self.edit(client, "subtract(150 120)", [{"step": 0, "operand": 0, "value": "1"}])
+
+        assert response.status_code == 422
+
+    def test_a_what_if_with_no_answer_says_so_rather_than_failing(self, client):
+        # Setting a divisor to zero is a fair thing to try. It comes back as a failure
+        # against the program that actually ran, rather than as a bad request.
+        response = self.edit(client, "divide(150, 120)", [{"step": 0, "operand": 1, "value": "0"}])
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["program"] == "divide(150, 0)"
+        assert body["answer"] is None
+        assert "division by zero" in body["failure"]
+
+    def test_an_unknown_report_is_a_404(self, client):
+        response = self.edit(
+            client,
+            "subtract(150, 120)",
+            [{"step": 0, "operand": 0, "value": "1"}],
+            document="not-a-report",
+        )
+
+        assert response.status_code == 404
+
+    def test_editing_nothing_is_refused(self, client):
+        assert self.edit(client, "subtract(150, 120)", []).status_code == 422
+
+
 class TestWithoutDocuments:
     def test_a_missing_split_says_how_to_get_it(self, tmp_path, monkeypatch):
         monkeypatch.setenv("FINQA_DATA_DIR", str(tmp_path / "empty"))
