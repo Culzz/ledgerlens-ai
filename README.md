@@ -35,10 +35,14 @@ dozen narrative lines — so a prompt containing the whole document already cont
 this benchmark retrieval is not the bottleneck; the reasoning is. Retrieval and citation are what
 the product needs, and FinQA cannot tell you whether they work.
 
-The evaluation harness and the first baseline exist, and the model layer is provider-neutral. No
-model has been run yet, because that needs a provider and there isn't one configured, so there is no
-accuracy figure here. If you see accuracy numbers for LedgerLens anywhere, they didn't come from
-here. Numbers only appear in this repo once a script under `evaluation/` produces them.
+The evaluation harness and the first baseline exist, and the model layer is provider-neutral. A real
+provider is wired up, and it is metered: Gemini's free tier allows 20 requests a day per model, so a
+150-question pilot is around eight days of resuming rather than one afternoon. The runner is
+resumable for exactly this reason, and a run that hits the ceiling prints when the quota returns and
+the command that continues it.
+
+There is no accuracy figure in this repo yet. If you see accuracy numbers for LedgerLens anywhere,
+they didn't come from here. Numbers only appear once a script under `evaluation/` produces them.
 
 `LLM_PROVIDER` defaults to `fake`, which answers offline with no key and no spend. That is how the
 harness, its resume behaviour and its error handling are tested.
@@ -46,8 +50,12 @@ harness, its resume behaviour and its error handling are tested.
 ```
 python -m evaluation.replay_gold_programs --split data/finqa/dev.json
 python -m evaluation.retrieval_ceiling   --split data/finqa/dev.json
-python -m evaluation.run_eval            --split data/finqa/dev.json --system direct
+python -m evaluation.check_provider
+python -m evaluation.run_eval            --split data/finqa/dev.json --system direct --limit 150
 ```
+
+`check_provider` spends one request to confirm the key and the model work, which is cheaper than
+finding out forty minutes into a run.
 
 ## Why it's built this way
 
@@ -114,8 +122,12 @@ cp .env.example .env
 
 No API key needed. The model layer is provider-neutral and defaults to an offline provider, so
 everything runs without one. When you want real answers, set `LLM_PROVIDER` and `LLM_MODEL` in
-`.env` and add a key — the adapter speaks the OpenAI chat-completions shape, so Groq, Cerebras,
+`.env` and add a key — the adapter speaks the OpenAI chat-completions shape, so Gemini, Groq,
 OpenRouter and OpenAI are a change to configuration rather than to code.
+
+Worth checking a provider's daily request ceiling before pointing a split at it. Gemini's free tier
+is 20 requests a day per model, Groq's is 1,000, and it is the daily limit rather than the
+per-minute one that decides whether a run finishes.
 
 ## Plan
 
