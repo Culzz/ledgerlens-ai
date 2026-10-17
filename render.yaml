@@ -20,13 +20,12 @@ services:
       # Set in the dashboard, never in the repository.
       - key: MISTRAL_API_KEY
         sync: false
-      # The free tier is a per-minute wall as much as a quota, and the app is
-      # behind a public URL, so it paces itself and stops when the budget runs out.
+      # The free tier is a per-minute wall as much as a quota, and this app sits
+      # behind a public URL, so it paces itself and waits out a 429 rather than
+      # treating it as a spent quota.
       - key: LLM_MIN_SECONDS_BETWEEN_CALLS
         value: "2.0"
       - key: LLM_MAX_RETRIES
         value: "4"
       - key: LLM_FREE_TIER
         value: "true"
-      - key: LLM_MONTHLY_BUDGET_USD
-        value: "0"
