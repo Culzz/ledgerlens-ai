@@ -105,6 +105,18 @@ class TestArithmetic:
     def test_exp_with_integer_power_is_exact(self):
         assert execute_program("exp(2, 10)").result == Decimal(1024)
 
+    def test_exp_with_a_negative_base_is_fine_for_a_whole_power(self):
+        assert execute_program("exp(-8, 3)").result == Decimal(-512)
+
+    def test_exp_with_a_fractional_power_refuses_a_negative_base(self):
+        # Before this was guarded, float answered with a complex number and
+        # ``Decimal(str(...))`` raised ``InvalidOperation`` - which is not a
+        # ``CalculationError``, so it escaped the engine's contract, and the repair
+        # loop catches ``CalculationError``. A model writing this program got a
+        # failed request instead of an error message to try again with.
+        with pytest.raises(CalculationError, match="positive base"):
+            execute_program("exp(-8, 0.5)")
+
     def test_nested_arithmetic(self):
         trace = execute_program("divide(subtract(150, 120), 120)")
         assert trace.result == Decimal("0.25")

@@ -43,30 +43,19 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from .errors import (
+    CalculationError,
+    InvalidArgument,
+    ProgramSyntaxError,
+    UnresolvedReference,
+    UnsupportedOperation,
+)
+from .finance import FINANCE_PRIMITIVES, apply_finance, real_power
+
 GREATER_TRUE = "yes"
 GREATER_FALSE = "no"
 
 MAX_STEPS = 64
-
-
-class CalculationError(Exception):
-    """Base class for anything that stops a program from producing an answer."""
-
-
-class ProgramSyntaxError(CalculationError):
-    """The program text could not be parsed."""
-
-
-class UnsupportedOperation(CalculationError):
-    """The program used an operation this engine does not implement."""
-
-
-class UnresolvedReference(CalculationError):
-    """A ``#n`` reference pointed at a step that does not exist."""
-
-
-class InvalidArgument(CalculationError):
-    """An argument was the wrong kind of thing."""
 
 
 # --------------------------------------------------------------------------
@@ -527,11 +516,10 @@ def _apply_numeric(op: str, args: Sequence[Decimal]) -> Decimal:
         return args[0] / args[1]
     if op == "exp":
         base, power = args
-        if power == power.to_integral_value():
-            return base ** int(power)
-        # Fractional powers have no exact decimal form; go through float and
-        # note it, rather than pretending to be exact.
-        return Decimal(str(float(base) ** float(power)))
+        # One implementation of "a power whose exponent may be fractional", shared
+        # with the financial formulas, so the rule about a negative base lives in
+        # one place instead of two that can disagree.
+        return real_power(base, power)
     raise UnsupportedOperation(op)
 
 
@@ -602,6 +590,13 @@ def execute_program(
             if len(args) != 2:
                 raise InvalidArgument(f"{op} takes 2 arguments, got {len(args)}")
             return _apply_numeric(op, args)
+
+        # The named financial formulas. Same argument rules as the arithmetic -
+        # plain numbers, evaluated first - so a formula can be handed the result
+        # of an earlier step and nothing else has to know the difference.
+        if op in FINANCE_PRIMITIVES:
+            args = [_require_numeric(evaluate(a), op) for a in node.args]
+            return apply_finance(op, args)
 
         raise UnsupportedOperation(f"unknown operation {op!r}")
 

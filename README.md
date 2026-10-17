@@ -212,6 +212,36 @@ PDF reader works.
 
 More detail in `docs/architecture.md`.
 
+## What the engine can compute
+
+The engine is the part of this that doesn't call a model. It runs a small program to the letter, and it
+knows three kinds of thing.
+
+**Arithmetic** - `add`, `subtract`, `multiply`, `divide`, and `exp` for powers, plus `greater` for the
+yes/no questions. **Table selection** - `table_sum`, `table_max`, `table_min`, `table_average`, which
+take a row label and a column header rather than a figure. **Financial formulas** - `cagr`,
+`present_value`, `perpetuity`, `dcf`, `ebitda`, `quick_ratio` and `debt_to_equity`.
+
+The formulas are named because the name is the useful part. `divide(637, 5)` is arithmetic, and nothing
+downstream can say what it was for. A compound growth rate is a quantity someone asked for, and the
+trail can only say `cagr` if there is a `cagr` to call. Each one takes its operands from the caller, so
+nothing here goes hunting for "revenue" in a report and guesses; where a formula refuses, it names the
+argument and the amount to pass instead, because on the model path that text is what gets retried.
+
+Two things about `dcf` worth knowing before anyone uses it. It takes five arguments because the years
+you can see and the years you cannot are two different assumptions - the forecast growth and the
+terminal growth - and with a single rate for both the answer collapses to `perpetuity` at *every*
+horizon, which is a property worth seeing in a signature rather than discovering in a spreadsheet. And
+a forecast whose years differ from one another still can't be written as a single call, because a step
+holds one number; that one is a sum of `present_value` steps, and the trail then shows every year
+instead of one figure.
+
+None of these are in the benchmark prompt. `program-v3` produced the runs in the table above, and
+adding operations to it would have changed what those numbers mean, so the primitives are engine
+capability for the product track and the prompt is left alone. Every formula is checked against a hand
+calculation in `backend/tests/unit/test_finance.py` and against the guardrail in `test_grounding.py`,
+since a formula the audit didn't recognise would be a way to get a figure past it.
+
 ## What I expect from it
 
 Putting the table inline and asking GPT-4 already scores around 65% on FinQA, and chain-of-thought

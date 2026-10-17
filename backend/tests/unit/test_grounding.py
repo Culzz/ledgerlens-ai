@@ -380,3 +380,58 @@ class TestItChecksTheWholeReportNotJustThePrompt:
 
         assert result.verdict == GROUNDED
         assert result.labels == ("table_2",)
+
+
+class TestTheFormulasGoThroughTheSameCheck:
+    """A named formula is arithmetic, so its figures are checked like any other.
+
+    This is the part that would be easy to miss. An operation the guardrail does
+    not recognise becomes a way to smuggle a figure past the audit, so each of the
+    financial formulas is exercised here rather than assumed to be covered.
+    """
+
+    def test_a_figure_inside_a_formula_is_cited_like_any_other(self):
+        result = grounding("cagr(900, 1200, 2)")
+        assert result.verdict == GROUNDED
+        assert result.labels == ("table_1",)
+
+    def test_two_rows_in_one_formula_are_both_cited(self):
+        result = grounding("cagr(700, 1200, 2)")
+        assert result.verdict == GROUNDED
+        assert set(result.labels) == {"table_1", "table_2"}
+
+    def test_a_period_count_reads_as_a_constant_not_a_figure(self):
+        # "2" is not written anywhere in the report and does not need to be: it is
+        # how many periods the question is about. The structural constants are what
+        # keep an average over three years from reading as a fabricated figure.
+        assert ("2", CONSTANT) in roles("cagr(900, 1200, 2)")
+
+    def test_a_formula_on_a_figure_the_report_does_not_state_is_not_refused(self):
+        # One figure is real and one is not, so the answer stands and the trail
+        # names the weak point. Refusing here would throw away a correct answer.
+        result = grounding("cagr(999, 1200, 2)")
+        assert result.verdict == PARTLY_GROUNDED
+        assert "999" in result.unsourced
+
+    def test_a_formula_resting_on_nothing_stated_is_refused(self):
+        result = grounding("quick_ratio(999, 888, 777)")
+        assert result.verdict == UNGROUNDED
+        assert set(result.unsourced) == {"999", "888", "777"}
+
+    def test_figures_inside_a_nested_formula_are_still_checked(self):
+        # The engine records one step for the whole nesting, so walking the steps
+        # would see only the outer argument. The figures have to come out of the
+        # call tree, and this is the case that proves they do.
+        result = grounding("multiply(cagr(900, 1200, 2), 100)")
+        assert result.verdict == GROUNDED
+        assert result.labels == ("table_1",)
+
+    def test_an_analysts_assumptions_are_flagged_without_refusing_the_answer(self):
+        # A discount rate and a growth rate are the analyst's assumptions, not
+        # figures from the report, and the check says so rather than accepting them
+        # silently. The one figure that does come from the report is cited. This is
+        # the audit doing its job on the product path rather than the benchmark one.
+        result = grounding("dcf(40, 0.1, 0.05, 0.03, 3)")
+        assert result.verdict == PARTLY_GROUNDED
+        assert set(result.unsourced) == {"0.1", "0.05", "0.03"}
+        assert result.labels == ("table_3",)

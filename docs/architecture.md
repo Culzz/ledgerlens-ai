@@ -88,16 +88,41 @@ Operands are either constants or `#n`, which means "the result of step n". Runni
 should reproduce `exe_ans` exactly. That's how the engine gets validated with no model involved at
 all.
 
-The tools the finished product exposes to the API are a higher layer built out of those primitives:
-`get_financial_value`, `calculate_difference`, `calculate_percentage_change`, `calculate_ratio`,
-`compare_values`, `calculate_percentage_point_change`.
+The engine has since grown a third kind of operation, named after the quantity an analyst asked for
+rather than after the arithmetic:
+
+| Operation | Args | Meaning |
+|---|---|---|
+| `cagr` | 3 | `(end / start) ^ (1 / periods) - 1` |
+| `present_value` | 3 | the value today of one cash flow arriving `periods` times, at `rate` |
+| `perpetuity` | 3 | Gordon growth, `cf * (1 + g) / (r - g)` |
+| `dcf` | 5 | a growing forecast plus a terminal value at a different growth |
+| `ebitda` | 4 | net income plus interest, tax and D&A added back |
+| `quick_ratio` | 3 | current assets less inventory, over current liabilities |
+| `debt_to_equity` | 2 | total debt over total equity |
+
+To the engine these are ordinary named operations on `Decimal`: same trace, same guardrail, same repair
+loop as `subtract`. They are not in the FinQA table above because FinQA's gold programs never use them.
+They exist for the product path, and `program-v3` is left untouched so the measured runs stay
+comparable.
+
+Two conventions hold across all of them. A rate comes back as a fraction and never a percentage,
+matching FinQA's own storage. And each takes its operands from the caller, so nothing goes looking for
+"revenue" in a report and guessing - `dcf` in particular takes the forecast growth and the terminal
+growth as separate arguments, because with one rate for both the horizon drops out of the answer
+entirely and it becomes `perpetuity` at every length. That is a property rather than a bug, and it is
+tested as one.
+
+There is no separate tool layer over the engine. The design went the other way: the model writes a
+program, the engine runs it, and the trace is what makes the arithmetic checkable afterwards. A set of
+functions the model called one at a time would be harder to verify and no easier to write.
 
 Worth noting: FinQA has no percentage-change operation. It's written as
-`divide(subtract(a, b), b)`. The percentage-change tool is a wrapper around that pattern, and it's
-where the unit rules and the percentage vs percentage-point distinction get enforced.
+`divide(subtract(a, b), b)`. The unit rules and the fraction-versus-percentage distinction are enforced
+when the figures are read back against the report, not by an operation.
 
-Keeping the two layers apart means the benchmark-facing half can be proven correct before any
-natural-language component exists. That's the order this gets built in.
+Keeping the benchmark-facing half provable before any natural-language component exists is the order
+this gets built in.
 
 ## Components
 

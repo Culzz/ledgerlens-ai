@@ -13,7 +13,7 @@ Not a single trained model. A small system made of parts, and not all the parts 
 |---|---|---|
 | LLM | provider-neutral adapter over the OpenAI chat-completions shape | built. Reads the question, writes the program or the answer. Never a source of numbers |
 | keyword search | in-process BM25 over table rows and narrative lines | built |
-| calculation | Python `Decimal` with a fixed allowlist of operations | built |
+| calculation | Python `Decimal`, a fixed allowlist of operations, plus named financial formulas (`cagr`, `dcf`, `perpetuity`, `present_value`, `ebitda`, `quick_ratio`, `debt_to_equity`) for the product path | built. What the benchmark measured is the arithmetic and the table selection; the formulas are never used by the benchmark prompt |
 | verification | every figure in a written program looked up in the whole report; a program resting on no figure the report states is refused | built |
 | repair | a program that will not run, or that fails the check, goes back to the model once with the engine's error | built |
 | evaluation | a plain-Python harness over stored JSONL, and pytest | built |
