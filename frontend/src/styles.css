@@ -1,481 +1,1266 @@
-/* One stylesheet, written by hand. Small enough to read in a sitting, and
-   nothing here needs a build step to understand. */
+/* LedgerLens — one stylesheet, written by hand and mobile-first.
+
+   Two ideas hold it together. The first is paper: a white page, warm near-black
+   ink, and hairline rules instead of shadows, because a financial statement is
+   ruled rather than floating. The second is that every region of the app is the
+   same three things — the library, the report, the question — arranged in columns
+   on a wide screen and as tabs on a narrow one. Nothing is a separate mobile app.
+
+   Breakpoints are 900px and 1200px. Below 900px one region is on screen at a time
+   and a tab bar switches between them; above 1200px all three sit side by side and
+   scroll independently. Between them the library keeps its rail and the report and
+   the question stack in one column. */
+
+/* --- typefaces -------------------------------------------------------------
+   Self-hosted, latin subset, three variable faces. Nothing is fetched from a
+   font CDN at runtime, and the mono face is only downloaded once a program is
+   actually on screen. */
+
+@font-face {
+  font-family: "Instrument Sans";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/instrument-sans-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/newsreader-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Spline Sans Mono";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("/fonts/spline-sans-mono-latin.woff2") format("woff2");
+}
 
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-sunken: #fafbfc;
-  --border: #e2e5e9;
-  --border-strong: #cfd5dc;
-  --text: #151a21;
-  --muted: #616b7a;
-  --faint: #8b95a3;
-  --accent: #0f766e;
-  --accent-soft: #e8f4f2;
-  --warn: #9a3412;
-  --warn-soft: #fdf3ec;
-  --cited: #fff5cc;
-  --radius: 10px;
-  --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+  --paper: #ffffff;
+  --ink: #1b1814;
+  --ink-soft: #5b544c;
+  --ink-faint: #8e877d;
+  --rule: #e9e5df;
+  --rule-soft: #f3f0ec;
+  --rule-strong: #cbc4ba;
+
+  --accent: #8a3324;
+  --accent-wash: #fdf4f1;
+
+  --cited: #fbf3d6;
+  --cited-rule: #e5d6a3;
+
+  --sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --serif: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
+  --mono: "Spline Sans Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --tap: 44px;
+  --radius: 2px;
+  --tabbar: 58px;
 }
 
 * {
   box-sizing: border-box;
 }
 
-html,
-body {
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body,
+html {
   margin: 0;
   padding: 0;
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
   font-size: 15px;
-  line-height: 1.55;
+  line-height: 1.5;
+  font-synthesis: none;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 h1,
 h2,
-h3 {
+h3,
+p,
+figure,
+blockquote,
+dl,
+dd {
   margin: 0;
-  font-weight: 600;
-  letter-spacing: -0.01em;
 }
 
 button,
-input,
-select {
+input {
   font: inherit;
   color: inherit;
 }
 
-/* --- shell ---------------------------------------------------------------- */
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 
-.shell {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 28px 20px 64px;
+code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The label above every block of content: small, tracked out, mono. It is the
+   one typographic habit repeated everywhere, which is what makes the panels
+   read as one document rather than four cards. */
+.label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.num {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- app shell ------------------------------------------------------------- */
+
+.app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
 }
 
 .masthead {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 20px;
-  flex-wrap: wrap;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 22px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 56px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
-.masthead h1 {
-  font-size: 21px;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-decoration: none;
 }
 
-.masthead h1 span {
+.brand svg {
+  display: block;
+  flex: none;
+}
+
+.brand em {
+  font-style: normal;
   color: var(--accent);
 }
 
-.tagline {
-  color: var(--muted);
-  max-width: 62ch;
-  margin-top: 6px;
-  font-size: 14px;
-}
-
-.badge {
+.masthead .status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--mono);
-  font-size: 12px;
-  color: var(--muted);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 11px;
+  font-size: 11px;
+  color: var(--ink-faint);
   white-space: nowrap;
+  overflow: hidden;
 }
 
-.badge strong {
-  color: var(--text);
-  font-weight: 600;
+.masthead .status b {
+  font-weight: 500;
+  color: var(--ink-soft);
 }
 
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
+/* A dot rather than a word: the provider is either live or offline, and the
+   colour is the whole message. The text is there for a screen reader. */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--accent);
 }
 
-@media (max-width: 980px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
+.status-dot[data-offline="true"] {
+  background: var(--ink-faint);
+}
+
+/* On a phone the model name is the first thing to go: which model answered is a
+   detail, how many reports are here is the fact someone just arrived for. */
+.status-narrow {
+  display: inline;
+}
+
+.status-wide {
+  display: none;
+}
+
+@media (min-width: 620px) {
+  .status-narrow {
+    display: none;
+  }
+
+  .status-wide {
+    display: inline;
   }
 }
 
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 18px;
-}
+/* --- banners --------------------------------------------------------------- */
 
-.card + .card {
-  margin-top: 20px;
-}
-
-.card > h2 {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--faint);
-  margin-bottom: 12px;
-}
-
-/* --- document ------------------------------------------------------------- */
-
-.search {
-  width: 100%;
-  padding: 9px 11px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--surface);
-  margin-bottom: 10px;
-}
-
-.doclist {
-  list-style: none;
-  margin: 0 0 8px;
-  padding: 0;
-  max-height: 260px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.doclist li + li {
-  border-top: 1px solid var(--border);
-}
-
-.doc {
+.banner {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  text-align: left;
-  background: none;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.banner svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.banner code {
+  color: inherit;
+}
+
+.banner span {
+  min-width: 0;
+}
+
+.banner-x {
+  position: relative;
+  margin-left: auto;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: -3px;
   border: 0;
-  padding: 9px 12px;
+  border-radius: var(--radius);
+  background: none;
+  color: inherit;
   cursor: pointer;
 }
 
-.doc:hover:not(:disabled) {
-  background: var(--accent-soft);
+.banner-x::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
 }
 
-.doc.selected {
-  background: var(--accent-soft);
-  box-shadow: inset 3px 0 0 var(--accent);
+/* --- panes ----------------------------------------------------------------- */
+
+.panes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.doc:disabled {
-  opacity: 0.55;
-  cursor: default;
+.pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.doc-name {
+/* Separators between stacked regions are only needed once the tab bar, which
+   has a rule of its own, is out of the picture. */
+
+/* The report and the question share a column so they can be one scroll region
+   at medium widths and two at wide ones. */
+.stack {
+  min-width: 0;
+}
+
+.pane-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 18px 16px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.pane-head .label {
+  flex: none;
+}
+
+.pane-head .meta {
+  margin-left: auto;
+  min-width: 0;
   font-family: var(--mono);
-  font-size: 12.5px;
-  word-break: break-all;
-}
-
-.doc-meta {
-  font-size: 11.5px;
-  color: var(--faint);
-}
-
-.search:focus-visible,
-.ask-row input:focus-visible,
-.ask-row button:focus-visible,
-.chip:focus-visible,
-.doc:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.filename {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 14px;
-  word-break: break-all;
-}
-
-table.report {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
+  font-size: 10.5px;
+  color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
-}
-
-table.report th,
-table.report td {
-  border: 1px solid var(--border);
-  padding: 6px 9px;
   text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-table.report th:first-child,
-table.report td:first-child {
-  text-align: left;
-  font-weight: 500;
-  white-space: normal;
+.pane-body {
+  padding: 16px;
+  min-width: 0;
 }
 
-table.report th {
-  background: var(--surface-sunken);
-  color: var(--muted);
-  font-weight: 600;
-  font-size: 12px;
-}
-
-table.report tr.hit td {
-  background: var(--cited);
-}
-
-.narrative {
-  margin: 16px 0 0;
+.pane-body--flush {
   padding: 0;
-  list-style: none;
-  font-size: 13.5px;
-  color: var(--muted);
 }
 
-.narrative li {
+/* --- library --------------------------------------------------------------- */
+
+.filter {
+  position: relative;
   display: flex;
-  gap: 10px;
-  padding: 4px 6px;
-  border-radius: 6px;
+  align-items: center;
 }
 
-.narrative li.hit {
-  background: var(--cited);
-  color: var(--text);
+.filter svg {
+  position: absolute;
+  left: 11px;
+  color: var(--ink-faint);
+  pointer-events: none;
 }
 
-.narrative li .idx {
+.filter input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 12px 10px 36px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  font-size: 14px;
+}
+
+.filter input::placeholder {
+  color: var(--ink-faint);
+}
+
+.filter input:focus-visible {
+  border-color: var(--accent);
+  outline-offset: 0;
+}
+
+.filter-clear {
+  position: absolute;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+/* Drawn at the size it should look, hit at the size a finger needs. 36 + 4 a
+   side is the 44px minimum, and the extra area is invisible. */
+.filter-clear::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+
+.filter-clear:hover {
+  color: var(--ink);
+}
+
+.records {
+  border-top: 1px solid var(--rule);
+}
+
+/* Kept on screen while a new filter is in flight, dimmed rather than replaced. */
+.records[data-stale="true"] {
+  opacity: 0.5;
+}
+
+.record {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.record:hover {
+  background: var(--rule-soft);
+}
+
+.record[aria-current="true"] {
+  background: var(--accent-wash);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.record-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.record-name {
+  display: block;
   font-family: var(--mono);
-  font-size: 11px;
-  color: var(--faint);
-  min-width: 2.6em;
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.record-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.record-chevron {
+  flex: none;
+  color: var(--rule-strong);
+}
+
+/* The last record's own rule already closes this off. */
+.records-foot {
+  padding: 10px 16px;
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- reading sheet ---------------------------------------------------------
+   The report itself. A red margin rule down the left, the way a ledger book has
+   one, and rules between rows rather than boxes around cells. */
+
+.sheet {
+  border-left: 1px solid #e6cfc8;
+  padding-left: 14px;
+  margin-left: 3px;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.sheet-head .filename {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.sheet-head .counts {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
   text-align: right;
-  padding-top: 2px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  margin: 0 -16px;
+  padding: 0 16px;
+}
+
+table.statement {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+table.statement th,
+table.statement td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+table.statement th {
+  border-bottom: 1px solid var(--rule-strong);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+table.statement td {
+  color: var(--ink);
+}
+
+/* Labels read left; figures read right, the way a statement is set. */
+table.statement th:first-child,
+table.statement td:first-child {
+  text-align: left;
+  padding-left: 0;
+  font-weight: 500;
+}
+
+table.statement th.right,
+table.statement td.right {
+  text-align: right;
+  padding-right: 0;
+}
+
+table.statement tr.cited td {
+  background: var(--cited);
+  border-bottom-color: var(--cited-rule);
+}
+
+table.statement tr.offered td {
+  background: var(--rule-soft);
+}
+
+table.statement tr:last-child td {
+  border-bottom: 1px solid var(--ink);
+}
+
+.prose {
+  margin-top: 20px;
+}
+
+.prose li {
+  display: grid;
+  grid-template-columns: 2.1em minmax(0, 1fr);
+  gap: 10px;
+  padding: 5px 6px 5px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
+
+.prose li .idx {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  text-align: right;
+  padding-top: 3px;
+}
+
+.prose li.cited {
+  background: var(--cited);
+  border-bottom-color: var(--cited-rule);
+  color: var(--ink);
+}
+
+.prose li.cited .idx {
+  color: var(--accent);
+}
+
+.prose-label {
+  display: block;
+  margin: 26px 0 8px;
+}
+
+/* The key to the highlighting, set small and quiet under the sheet. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  margin-top: 18px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend .swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 1px;
+  flex: none;
+}
+
+.legend .swatch--cited {
+  background: var(--cited);
+  box-shadow: inset 0 0 0 1px var(--cited-rule);
+}
+
+.legend .swatch--offered {
+  background: var(--rule-soft);
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+
+/* --- asking ---------------------------------------------------------------- */
+
+.ask-form {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.ask-form input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+
+.ask-form input:focus-visible {
+  border-color: var(--accent);
+  outline-offset: 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--tap);
+  padding: 10px 18px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: #322d26;
+  border-color: #322d26;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn--quiet {
+  background: none;
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.btn--quiet:hover:not(:disabled) {
+  background: var(--rule-soft);
+  border-color: var(--rule-strong);
+}
+
+/* The one animation in the app, and it only runs while a request is open. */
+.spin {
+  animation: turn 0.9s linear infinite;
+}
+
+@keyframes turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
 }
 
 .hint {
-  color: var(--faint);
-  font-size: 13px;
-  font-style: italic;
-}
-
-/* --- questions ------------------------------------------------------------ */
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  padding: 6px 13px;
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-  transition: background 120ms ease, border-color 120ms ease;
-}
-
-.chip:hover:not(:disabled) {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-
-.chip:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-/* --- asking --------------------------------------------------------------- */
-
-.ask-row {
-  display: flex;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.ask-row input {
-  flex: 1;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--surface);
-}
-
-.ask-row button {
-  padding: 10px 18px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.ask-row button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-/* --- answer --------------------------------------------------------------- */
-
-.answer-value {
-  font-size: 34px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  word-break: break-all;
-}
-
-.answer-label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--faint);
-  margin-bottom: 4px;
-}
-
-.reference {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border-strong);
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.reference code {
-  font-family: var(--mono);
-  color: var(--text);
-  background: var(--surface-sunken);
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
-.failure {
-  background: var(--warn-soft);
-  border: 1px solid #f0d3c0;
-  color: var(--warn);
-  border-radius: 8px;
-  padding: 12px 14px;
-  font-size: 13.5px;
-}
-
-.program {
-  font-family: var(--mono);
+  margin-top: 10px;
   font-size: 12.5px;
-  background: #1c2430;
-  color: #e7edf5;
-  border-radius: 8px;
-  padding: 12px 14px;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.steps {
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--muted);
-}
-
-.steps li {
-  padding: 2px 0;
+  color: var(--ink-faint);
 }
 
 .blurb {
-  color: var(--muted);
   font-size: 13px;
-  margin-bottom: 12px;
+  line-height: 1.6;
+  color: var(--ink-soft);
 }
 
-.evidence {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.blurb + .blurb {
+  margin-top: 9px;
+}
+
+.blurb code {
+  color: var(--ink);
+}
+
+.suggestions {
+  margin-top: 14px;
+}
+
+.suggestions .label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.suggestions li + li {
+  border-top: 1px solid var(--rule-soft);
+}
+
+.suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 9px 4px;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.suggestion:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.suggestion:hover:not(:disabled) span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--rule-strong);
+}
+
+.suggestion svg {
+  flex: none;
+  color: var(--rule-strong);
+}
+
+.suggestion:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- answer ----------------------------------------------------------------
+   The figure is the anchor: a serif numeral, ruled off above and closed with the
+   double rule an accounting total gets. */
+
+.verdict {
+  margin-top: 20px;
+  border-top: 1px solid var(--rule-strong);
+  padding-top: 14px;
+}
+
+.verdict > .label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.verdict-value {
+  font-family: var(--serif);
+  font-size: clamp(30px, 9vw, 42px);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums lining-nums;
+  overflow-wrap: anywhere;
+  padding-bottom: 10px;
+  border-bottom: 3px double var(--rule-strong);
+}
+
+/* A refused answer still gets the ruled space, so the panel does not jump. */
+.verdict-value--none {
+  color: var(--ink-faint);
+}
+
+.verdict-exact {
+  margin-top: 9px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+
+.verdict-exact code {
+  color: var(--ink-soft);
+}
+
+.verdict-note {
+  margin-top: 12px;
   font-size: 12.5px;
+  color: var(--ink-faint);
+  line-height: 1.5;
+}
+
+.verdict-note code {
+  color: var(--ink-soft);
+}
+
+.block {
+  margin-top: 22px;
+}
+
+.block > .label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.program {
+  position: relative;
+  border: 1px solid var(--rule);
+  background: var(--rule-soft);
+  border-radius: var(--radius);
+}
+
+/* Room on the right for the copy button, which floats over the first line. */
+.program pre {
+  margin: 0;
+  padding: 12px 46px 12px 13px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--ink);
+  white-space: pre;
+}
+
+.copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: var(--rule-soft);
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+
+/* Same trick as the filter's clear button: 34 drawn, 44 to hit. */
+.copy::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+
+.copy:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.steps {
+  margin-top: 2px;
+  border-top: 1px solid var(--rule);
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: 2.4em minmax(0, 1fr);
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.steps li .idx {
+  color: var(--ink-faint);
+  text-align: right;
 }
 
 .evidence li {
-  display: flex;
+  display: grid;
+  grid-template-columns: 5.6em minmax(0, 1fr);
   gap: 10px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid transparent;
+  padding: 8px 0 8px 8px;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  border-left: 2px solid transparent;
 }
 
 .evidence li.cited {
   background: var(--cited);
-  border-color: #e9d9a0;
+  border-bottom-color: var(--cited-rule);
+  border-left-color: var(--accent);
+  color: var(--ink);
 }
 
-.evidence .label {
+.evidence .tag {
   font-family: var(--mono);
-  color: var(--faint);
-  min-width: 6.5em;
+  font-size: 11px;
+  color: var(--ink-faint);
 }
 
-.evidence .text {
-  color: var(--text);
+.evidence li.cited .tag {
+  color: var(--accent);
+}
+
+.evidence .what {
   min-width: 0;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
-.notice {
-  font-size: 12.5px;
-  color: var(--muted);
-  background: var(--surface-sunken);
-  border: 1px dashed var(--border-strong);
-  border-radius: 8px;
-  padding: 8px 11px;
-  margin-bottom: 12px;
-}
-
+/* What the answer cost, in the smallest type on the page. */
 .meter {
+  margin-top: 22px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  gap: 6px 16px;
   font-family: var(--mono);
-  font-size: 11.5px;
-  color: var(--faint);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
 }
 
-.error {
-  color: var(--warn);
-  background: var(--warn-soft);
-  border: 1px solid #f0d3c0;
-  border-radius: 8px;
-  padding: 10px 13px;
+/* --- notices --------------------------------------------------------------- */
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--ink-faint);
+  border-radius: var(--radius);
+  background: var(--rule-soft);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+/* A notice carrying an action puts it on the right, or on its own line when the
+   message is long enough to fill the row. */
+.notice > .btn {
+  margin-left: auto;
+  flex: none;
+}
+
+.notice svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--ink-faint);
+}
+
+.notice--warn {
+  background: var(--accent-wash);
+  border-color: #eddbd5;
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+
+.notice--warn svg {
+  color: var(--accent);
+}
+
+.notice strong {
+  font-weight: 600;
+}
+
+.notice a {
+  color: inherit;
+}
+
+/* --- empty states ----------------------------------------------------------
+   Drawn, not greyed out. Each one says what is missing and offers the next move
+   as a button, because an empty panel with nothing in it is a dead end. */
+
+.blank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 20px 44px;
+}
+
+.blank-art {
+  color: var(--rule-strong);
+  margin-bottom: 18px;
+}
+
+.blank-art .pen {
+  color: var(--accent);
+}
+
+.blank h2 {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.blank p {
+  max-width: 34ch;
   font-size: 13.5px;
+  color: var(--ink-faint);
+  line-height: 1.55;
+}
+
+.blank .btn {
+  margin-top: 18px;
+}
+
+.blank q {
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+/* --- skeleton -------------------------------------------------------------- */
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 4px 0;
+}
+
+.skeleton span {
+  height: 11px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--rule-soft) 25%, var(--rule) 37%, var(--rule-soft) 63%);
+  background-size: 400% 100%;
+  animation: sweep 1.6s ease-in-out infinite;
+}
+
+.skeleton span:nth-child(2) {
+  width: 88%;
+}
+
+.skeleton span:nth-child(3) {
+  width: 64%;
+}
+
+@keyframes sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton span {
+    animation: none;
+    background: var(--rule);
+  }
+}
+
+/* --- tab bar (narrow screens only) ------------------------------------------ */
+
+.tabbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: var(--tabbar);
+  border: 0;
+  border-top: 2px solid transparent;
+  background: none;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  color: var(--ink);
+  border-top-color: var(--accent);
+}
+
+.tab-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  line-height: 16px;
+  letter-spacing: 0;
+}
+
+/* --- narrow screens: one region at a time ----------------------------------
+   Which region is showing is the app's own state, so it is a data attribute on
+   the grid rather than a class per panel. The tab bar is the only navigation. */
+
+@media (max-width: 899px) {
+  .panes[data-view="library"] .stack,
+  .panes[data-view="report"] .pane--library,
+  .panes[data-view="report"] .pane--ask,
+  .panes[data-view="ask"] .pane--library,
+  .panes[data-view="ask"] .pane--reader {
+    display: none;
+  }
+}
+
+/* --- wide screens ---------------------------------------------------------- */
+
+@media (min-width: 900px) {
+  .app {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .masthead {
+    padding: 0 24px;
+  }
+
+  .tabbar {
+    display: none;
+  }
+
+  .panes {
+    grid-template-columns: 320px minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .pane--library {
+    border-right: 1px solid var(--rule);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .pane--reader {
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* Recentre the library's full-bleed rules on the wider padding. */
+  .records {
+    margin: 0 -24px;
+  }
+
+  .record,
+  .records-foot {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .stack {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .pane-head {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--paper);
+    padding: 20px 24px 12px;
+  }
+
+  .pane-body {
+    padding: 18px 24px 40px;
+  }
+
+  .table-scroll {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Prose is the hardest thing to read long lines of, so it is the thing that
+     gets a measure. Tables keep the full width. */
+  .sheet,
+  .prose {
+    max-width: 46em;
+  }
+}
+
+@media (min-width: 1200px) {
+  .stack {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 440px;
+    overflow: hidden;
+  }
+
+  .pane--reader,
+  .pane--ask {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .pane--reader {
+    border-bottom: 0;
+  }
+
+  .pane--ask {
+    border-left: 1px solid var(--rule);
+  }
 }

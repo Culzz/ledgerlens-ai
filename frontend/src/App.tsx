@@ -1,3 +1,4 @@
+import { Books, ChatCircleDots, FileText, Info, WarningCircle, X } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 
 import {
@@ -9,19 +10,34 @@ import {
   type Health,
   type Report,
 } from "./api";
-import AnswerCard from "./components/AnswerCard";
-import ReportPicker from "./components/ReportPicker";
-import ReportView from "./components/ReportView";
+import AskPanel from "./components/AskPanel";
+import Blank, { SheetArt } from "./components/Blank";
+import Library from "./components/Library";
+import Mark from "./components/Mark";
+import ReportReader from "./components/ReportReader";
+import { count } from "./format";
+
+// The three regions of the app. Wide screens show all of them as columns; narrow
+// ones show one at a time with the tab bar, which is the same app rather than a
+// reduced version of it.
+type View = "library" | "report" | "ask";
+
+const TABS = [
+  { id: "library" as const, label: "Library", Icon: Books },
+  { id: "report" as const, label: "Report", Icon: FileText },
+  { id: "ask" as const, label: "Ask", Icon: ChatCircleDots },
+];
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [answer, setAnswer] = useState<Answer | null>(null);
-  const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<View>("library");
 
-  // Open a report to begin with, so the page is not an empty form.
+  // Open a report to begin with, so a first visit lands on a real table with real
+  // questions rather than on three empty panels.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -44,7 +60,7 @@ export default function App() {
   async function openReport(id: string) {
     setAnswer(null);
     setError(null);
-    setQuestion("");
+    setView("report");
     try {
       setReport(await fetchReport(id));
     } catch (cause) {
@@ -53,15 +69,13 @@ export default function App() {
   }
 
   async function submit(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || !report || busy) return;
-
-    setQuestion(trimmed);
+    if (!report || busy) return;
     setBusy(true);
     setAnswer(null);
     setError(null);
+    setView("ask");
     try {
-      setAnswer(await ask(report.id, trimmed));
+      setAnswer(await ask(report.id, text));
     } catch (cause) {
       setError(describe(cause));
     } finally {
@@ -74,113 +88,111 @@ export default function App() {
   const offline = health?.provider === "fake";
 
   return (
-    <div className="shell">
+    <div className="app">
       <header className="masthead">
-        <div>
-          <h1>
-            Ledger<span>Lens</span>
-          </h1>
-          <p className="tagline">
-            Ask a question about a financial report. The model writes a program, a calculation
-            engine runs it against the report's own figures, and the answer arrives with the steps
-            and the rows behind it.
-          </p>
-        </div>
+        <a className="brand" href="/">
+          <Mark />
+          <span>
+            Ledger<em>Lens</em>
+          </span>
+        </a>
         {health && (
-          <div className="badge">
-            <strong>{health.provider}</strong>
-            {health.model ? ` · ${health.model}` : ""} · {health.documents} reports
+          <div className="status">
+            <span className="status-dot" data-offline={offline} aria-hidden="true" />
+            <span className="sr-only">{offline ? "No model configured." : "Model connected."}</span>
+            <span className="status-narrow">{count(health.documents)} reports</span>
+            <span className="status-wide">
+              <b>{health.provider}</b>
+              {health.model ? ` · ${health.model}` : ""} · {count(health.documents)} reports
+            </span>
           </div>
         )}
       </header>
 
-      {error && <div className="error" style={{ marginBottom: 18 }}>{error}</div>}
-
-      {health && !health.documents_loaded && (
-        <div className="error" style={{ marginBottom: 18 }}>
-          No documents are loaded. Run <code>python scripts/download_data.py</code> to fetch the
-          FinQA split, then reload.
+      {error && (
+        <div className="banner" role="alert">
+          <WarningCircle size={16} weight="bold" />
+          <span>{error}</span>
+          <button className="banner-x" onClick={() => setError(null)} aria-label="Dismiss">
+            <X size={14} weight="bold" />
+          </button>
         </div>
       )}
 
-      <div className="layout">
-        <div>
-          <div className="card">
-            <h2>Report</h2>
-            <ReportPicker selected={report?.id ?? null} onSelect={openReport} disabled={busy} />
+      {health && !health.documents_loaded && (
+        <div className="banner" role="status">
+          <Info size={16} weight="bold" />
+          <span>
+            No reports are loaded. Run <code>python scripts/download_data.py</code> to fetch the
+            FinQA split, then reload.
+          </span>
+        </div>
+      )}
+
+      <main className="panes" data-view={view}>
+        <section className="pane pane--library" aria-label="Report library">
+          <div className="pane-head">
+            <span className="label">Library</span>
+            <span className="meta">{health ? count(health.documents) : ""}</span>
           </div>
+          <Library
+            selected={report?.id ?? null}
+            onSelect={(id) => void openReport(id)}
+            disabled={busy}
+          />
+        </section>
 
-          {report && (
-            <div className="card">
-              <h2>Ask</h2>
-              <div className="chips">
-                {report.questions.length > 0 ? (
-                  report.questions.map((item) => (
-                    <button
-                      key={item}
-                      className="chip"
-                      onClick={() => void submit(item)}
-                      disabled={busy}
-                    >
-                      {item}
-                    </button>
-                  ))
-                ) : (
-                  <p className="hint">No questions came with this report. Type one below.</p>
-                )}
-              </div>
-
-              <form
-                className="ask-row"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void submit(question);
-                }}
+        <div className="stack">
+          <section className="pane pane--reader" aria-label="Report">
+            <div className="pane-head">
+              <span className="label">Report</span>
+              {report && <span className="meta">{report.filename}</span>}
+            </div>
+            {report ? (
+              <ReportReader report={report} cited={cited} offered={offered} />
+            ) : (
+              <Blank
+                art={<SheetArt />}
+                title="Nothing open yet"
+                action={
+                  <button className="btn" onClick={() => setView("library")}>
+                    Open the library
+                  </button>
+                }
               >
-                <input
-                  value={question}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  placeholder="Or ask something of your own about this report"
-                  aria-label="Your question"
-                />
-                <button type="submit" disabled={busy || !question.trim()}>
-                  {busy ? "Working…" : "Ask"}
-                </button>
-              </form>
-            </div>
-          )}
+                Pick a report and its table, its narrative, and the questions that came with it all
+                appear here.
+              </Blank>
+            )}
+          </section>
 
-          {report && <ReportView report={report} cited={cited} offered={offered} />}
+          <section className="pane pane--ask" aria-label="Question">
+            <AskPanel
+              key={report?.id ?? "none"}
+              report={report}
+              answer={answer}
+              busy={busy}
+              offline={Boolean(offline)}
+              onSubmit={(text) => void submit(text)}
+              onBrowse={() => setView("library")}
+            />
+          </section>
         </div>
+      </main>
 
-        <div>
-          {busy && (
-            <div className="card">
-              <h2>Answer</h2>
-              <p className="blurb">Retrieving the rows, then writing a program…</p>
-            </div>
-          )}
-
-          {!busy && answer && <AnswerCard answer={answer} offline={offline} />}
-
-          {!busy && !answer && (
-            <div className="card">
-              <h2>How this works</h2>
-              <p className="blurb">
-                The model never supplies the number. It reads the retrieved rows and lines and
-                writes a program in a small DSL — <code>subtract(1200, 900)</code>,{" "}
-                <code>table_sum(revenue, none)</code> — which the engine then runs against the
-                report. That is why an answer can be shown with its arithmetic instead of asserted.
-              </p>
-              <p className="blurb">
-                It is also why failure is visible. A program naming a row the table does not have
-                returns no answer at all, with the reason, rather than a plausible figure.
-              </p>
-              <p className="hint">Pick a question on the left to see one.</p>
-            </div>
-          )}
-        </div>
-      </div>
+      <nav className="tabbar" aria-label="Sections">
+        {TABS.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            className="tab"
+            aria-current={view === id ? "true" : undefined}
+            onClick={() => setView(id)}
+          >
+            <Icon size={19} weight={view === id ? "fill" : "regular"} />
+            <span>{label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }

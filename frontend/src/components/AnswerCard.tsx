@@ -1,4 +1,8 @@
+import { Check, Copy } from "@phosphor-icons/react";
+import { useState } from "react";
+
 import type { Answer } from "../api";
+import { count, formatAnswer, formatCost, formatSeconds } from "../format";
 
 interface Props {
   answer: Answer;
@@ -6,69 +10,100 @@ interface Props {
   offline: boolean;
 }
 
-function formatCost(cost: number | null): string {
-  if (cost === null) return "cost unknown";
-  if (cost === 0) return "free tier";
-  return `$${cost.toFixed(4)}`;
-}
-
 export default function AnswerCard({ answer, offline }: Props) {
+  const [copied, setCopied] = useState(false);
   const cited = answer.evidence.filter((item) => item.cited);
+  const offered = answer.evidence.filter((item) => !item.cited);
+  const answered = answer.answer !== null;
+  const figure = answered ? formatAnswer(answer.answer ?? "") : null;
+
+  async function copyProgram() {
+    if (!answer.program) return;
+    try {
+      await navigator.clipboard.writeText(answer.program);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // The clipboard is blocked outside a secure context. The program is on
+      // screen either way, so there is nothing to recover from.
+    }
+  }
 
   return (
-    <div className="card">
-      <h2>Answer</h2>
-
+    <div className="answer">
       {answer.retrieval_fallback && (
         <div className="notice">
-          Nothing in the question matched the report, so retrieval stood aside and the whole report
-          went to the model. Worth knowing: this question measures the model, not the retriever.
+          <span>
+            Nothing in the question matched anything in the report, so retrieval stood aside and the
+            whole report went to the model. Worth knowing when reading the program below: this
+            question measured the model, not the retriever.
+          </span>
         </div>
       )}
 
-      {answer.answer !== null ? (
-        <>
-          <div className="answer-label">Computed by the engine</div>
-          <div className="answer-value">{answer.answer}</div>
-        </>
-      ) : (
-        <div className="failure">
-          <strong>No answer.</strong>{" "}
-          {offline
-            ? "The app is running without a model configured, so no program was written. Set LLM_PROVIDER and a key to get answers."
-            : answer.failure ?? "The program could not be run."}
+      <div className="verdict">
+        <span className="label">{answered ? "Computed by the engine" : "No answer"}</span>
+        <div className={answered ? "verdict-value num" : "verdict-value num verdict-value--none"}>
+          {figure ? figure.shown : "—"}
         </div>
-      )}
-
-      {answer.answer !== null && answer.reference_answer !== null && (
-        <div className="reference">
-          FinQA's annotation for this question is <code>{answer.reference_answer}</code>. The
-          comparison is shown, not made: the answer above comes from the document alone.
-        </div>
-      )}
+        {figure?.exact && (
+          <p className="verdict-exact">
+            the engine's exact figure · <code>{figure.exact}</code>
+          </p>
+        )}
+        {!answered && (
+          <p className="verdict-note">
+            {offline
+              ? "No model is configured, so no program was written. Set LLM_PROVIDER and a key to get answers."
+              : (answer.failure ?? "The program could not be run against this report.")}
+          </p>
+        )}
+        {answered && answer.reference_answer !== null && (
+          <p className="verdict-note">
+            FinQA's annotation for this question is <code>{answer.reference_answer}</code>, shown for
+            comparison. The figure above came from the document, not from the annotation.
+          </p>
+        )}
+      </div>
 
       {answer.program && (
-        <div style={{ marginTop: 18 }}>
-          <div className="answer-label">Program</div>
-          <div className="program">{answer.program}</div>
+        <div className="block">
+          <span className="label">Program</span>
+          <div className="program">
+            <button className="copy" onClick={() => void copyProgram()} aria-label="Copy the program">
+              {copied ? <Check size={14} weight="bold" /> : <Copy size={14} />}
+            </button>
+            <pre>{answer.program}</pre>
+          </div>
           {answer.steps.length > 0 && (
             <ol className="steps">
               {answer.steps.map((step, index) => (
-                <li key={index}>{step}</li>
+                <li key={index}>
+                  <span className="idx">{index + 1}</span>
+                  <span>{step}</span>
+                </li>
               ))}
             </ol>
           )}
         </div>
       )}
 
-      {cited.length > 0 && (
-        <div style={{ marginTop: 18 }}>
-          <div className="answer-label">Evidence it read</div>
+      {answer.evidence.length > 0 && (
+        <div className="block">
+          <span className="label">
+            Evidence · {cited.length} used of {answer.evidence.length} retrieved
+          </span>
           <ul className="evidence">
             {cited.map((item) => (
               <li key={item.label} className="cited">
-                <span className="label">{item.label}</span>
-                <span className="text">{item.text}</span>
+                <span className="tag">{item.label}</span>
+                <span className="what">{item.text}</span>
+              </li>
+            ))}
+            {offered.map((item) => (
+              <li key={item.label}>
+                <span className="tag">{item.label}</span>
+                <span className="what">{item.text}</span>
               </li>
             ))}
           </ul>
@@ -80,9 +115,9 @@ export default function AnswerCard({ answer, offline }: Props) {
           {answer.provider}
           {answer.model ? ` · ${answer.model}` : ""}
         </span>
-        <span>{answer.total_tokens.toLocaleString()} tokens</span>
+        <span>{count(answer.total_tokens)} tokens</span>
         <span>{formatCost(answer.cost_usd)}</span>
-        <span>{answer.latency_seconds.toFixed(2)}s</span>
+        <span>{formatSeconds(answer.latency_seconds)}</span>
       </div>
     </div>
   );
