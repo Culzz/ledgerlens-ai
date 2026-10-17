@@ -590,7 +590,24 @@ class TestRetries:
             [httpx.Response(429, json={}, headers={"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}), ok()]
         )
         make_provider(responder, sleeps=sleeps).complete([user("q")])
-        assert sleeps.delays == [2.0]
+        # Ignored, so the wait falls back to the rate-limit backoff rather than
+        # being parsed into something wrong.
+        assert sleeps.delays == [15.0]
+
+    def test_a_rate_limit_waits_longer_than_a_server_error(self):
+        # A 503 is a capacity blip that clears in seconds. A 429 with no stated
+        # delay is usually a per-minute window, which is not.
+        limit = SleepRecorder()
+        make_provider(
+            Responder([httpx.Response(429, json={}), ok()]), sleeps=limit
+        ).complete([user("q")])
+
+        blip = SleepRecorder()
+        make_provider(
+            Responder([httpx.Response(503, json={}), ok()]), sleeps=blip
+        ).complete([user("q")])
+
+        assert limit.delays[0] > blip.delays[0]
 
 
 class TestMalformedResponses:

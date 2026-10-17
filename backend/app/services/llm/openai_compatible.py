@@ -44,6 +44,14 @@ MAX_BACKOFF_SECONDS = 30.0
 # failure that another moment would have answered.
 BASE_BACKOFF_SECONDS = 2.0
 
+# A rate limit with no stated delay is more often a per-minute window than a
+# spent quota, and waiting that out inside the call is worth a lot: a run which
+# halts on one needs a person to notice, come back and resume it, and by then the
+# window has long gone. Longer than the server-error base on purpose, because the
+# window is measured in tens of seconds rather than in seconds.
+RATE_LIMIT_BACKOFF_SECONDS = 15.0
+MAX_RATE_LIMIT_BACKOFF_SECONDS = 60.0
+
 
 def retry_after_seconds(response: httpx.Response) -> float | None:
     """Read a ``Retry-After`` header, if the provider sent a usable one.
@@ -207,6 +215,7 @@ class OpenAICompatibleProvider:
         for attempt in range(1, attempts + 1):
             self._limiter.wait()
             retry_after: float | None = None
+            rate_limited = False
 
             try:
                 response = self._client.post(
@@ -251,12 +260,22 @@ class OpenAICompatibleProvider:
                     if response.status_code == 429
                     else ProviderUnavailable(detail)
                 )
+                rate_limited = response.status_code == 429
                 retry_after = asked
 
             if attempt == attempts:
                 raise failure
 
-            delay = retry_after if retry_after is not None else self._backoff(attempt)
+            if retry_after is not None:
+                delay = retry_after
+            elif rate_limited:
+                delay = self._backoff(
+                    attempt,
+                    base=RATE_LIMIT_BACKOFF_SECONDS,
+                    ceiling=MAX_RATE_LIMIT_BACKOFF_SECONDS,
+                )
+            else:
+                delay = self._backoff(attempt)
             self._sleep(delay)
 
         # Unreachable: the loop either returns or raises. Kept for type checkers.
@@ -264,10 +283,16 @@ class OpenAICompatibleProvider:
 
     # -- internals ---------------------------------------------------------
 
-    def _backoff(self, attempt: int) -> float:
+    def _backoff(
+        self,
+        attempt: int,
+        *,
+        base: float = BASE_BACKOFF_SECONDS,
+        ceiling: float = MAX_BACKOFF_SECONDS,
+    ) -> float:
         """Exponential backoff with jitter, so concurrent runs do not sync up."""
-        ceiling = min(MAX_BACKOFF_SECONDS, BASE_BACKOFF_SECONDS * 2.0 ** (attempt - 1))
-        return ceiling * (0.5 + 0.5 * self._jitter())
+        capped = min(ceiling, base * 2.0 ** (attempt - 1))
+        return capped * (0.5 + 0.5 * self._jitter())
 
     def _parse(self, response: httpx.Response, *, started: float, attempt: int) -> Completion:
         try:
