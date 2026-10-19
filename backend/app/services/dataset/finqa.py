@@ -83,6 +83,16 @@ class FinQAExample:
         return self.pre_text + self.post_text
 
     @property
+    def report_filename(self) -> str:
+        """The report this question is about.
+
+        FinQA's records carry the report in the id - "V/2008/page_17.pdf-2" is the
+        second question about that page - and leave the ``filename`` field empty.
+        The id is therefore the reliable place to read it from.
+        """
+        return self.filename or self.id.rsplit("-", 1)[0]
+
+    @property
     def table_shape(self) -> tuple[int, int]:
         rows = len(self.table)
         cols = len(self.table[0]) if rows else 0

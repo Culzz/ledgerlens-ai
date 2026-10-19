@@ -522,6 +522,13 @@ class TestExport:
             "999",
         }
 
+    def test_the_workbook_names_the_report_it_came_from(self, client):
+        # FinQA records leave their filename field empty, so this went in as "None"
+        # until the report was read from the id it is encoded in.
+        book = load_workbook(BytesIO(self.export(client).content))
+
+        assert field(book["Answer"], "Report") == f"SAMPLE/2023/page_10.pdf  ({DOCUMENT})"
+
     def test_a_program_that_will_not_run_is_refused_rather_than_emptied(self, client):
         assert self.export(client, program="subtract(").status_code == 422
 

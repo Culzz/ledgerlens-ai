@@ -64,7 +64,7 @@ def export_xlsx(request: ExportRequest) -> Response:
     report = AnswerReport(
         question=request.question,
         document_id=request.document_id,
-        filename=examples[0].filename,
+        filename=examples[0].report_filename,
         answer=str(trace.result),
         program=request.program,
         failure=None,
