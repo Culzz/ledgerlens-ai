@@ -1,0 +1,20 @@
+# What must not leave this machine, and what Vercel builds for itself.
+
+# Never uploaded. The deployed app reads its secrets from the project's
+# environment variables, not from a file.
+.env
+.env.*
+!.env.example
+
+# Local toolchains.
+.venv
+frontend/node_modules
+frontend/dist
+__pycache__
+*.pyc
+
+# Downloaded during the build from the FinQA source, by `scripts/download_data.py`.
+data/
+
+# Evaluation artefacts are for the repository, not for the function bundle.
+evaluation/reports/

@@ -48,3 +48,4 @@ evaluation/reports/*
 Thumbs.db
 .vscode/settings.json
 .idea/
+.vercel/
