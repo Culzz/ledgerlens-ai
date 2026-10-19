@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
+  "regions": ["fra1"],
   "buildCommand": "npm --prefix frontend ci --no-fund --no-audit && npm --prefix frontend run build && python3 scripts/download_data.py",
   "outputDirectory": "frontend/dist",
   "functions": {
