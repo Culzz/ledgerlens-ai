@@ -10,19 +10,34 @@ from __future__ import annotations
 
 import json
 import shutil
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 from app.api import deps
 from app.api.routes import ask as ask_routes
+from app.api.routes import export as export_routes
 from app.core.config import get_settings
 from app.main import create_app
 from app.services.llm import Completion
 from app.services.reasoning import Orchestrator
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "finqa_sample.json"
 DOCUMENT = "sample-2023-page-10-pdf"
+
+
+def cells(sheet) -> list[list[str | None]]:
+    return [[cell.value for cell in row] for row in sheet.iter_rows()]
+
+
+def field(sheet, name: str) -> str | None:
+    """The value of a named row on the Answer sheet."""
+    for row in cells(sheet):
+        if row and row[0] == name:
+            return row[1]
+    raise AssertionError(f"no {name!r} row on the sheet")
 
 
 class ScriptedProvider:
@@ -423,6 +438,95 @@ class TestRecompute:
 
     def test_editing_nothing_is_refused(self, client):
         assert self.edit(client, "subtract(150, 120)", []).status_code == 422
+
+
+class ExplodingProvider:
+    """A provider that fails the test if anything asks it anything."""
+
+    name = "exploding"
+    model = "none"
+
+    def complete(self, *args, **kwargs):
+        raise AssertionError("the export called a model")
+
+
+class TestExport:
+    """The answer as a workbook, rebuilt here rather than forwarded.
+
+    The request carries a question and a program and nothing else, so the file
+    cannot hold a figure this process did not compute - which is the same invariant
+    as everywhere else, applied to the one artefact a reader walks away with.
+    """
+
+    def export(self, client, program: str = "subtract(150, 120)", document: str = DOCUMENT):
+        return client.post(
+            "/api/export/xlsx",
+            json={
+                "document_id": document,
+                "question": "What was the change in operating income?",
+                "program": program,
+                "provider": "scripted",
+                "model": "scripted-model",
+            },
+        )
+
+    def test_it_comes_back_as_a_spreadsheet_download(self, client):
+        response = self.export(client)
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        disposition = response.headers["content-disposition"]
+        assert disposition.startswith("attachment;")
+        assert disposition.endswith('.xlsx"')
+        assert DOCUMENT in disposition
+
+    def test_the_workbook_holds_the_answer_the_trail_and_the_evidence(self, client):
+        book = load_workbook(BytesIO(self.export(client).content))
+
+        assert book.sheetnames == ["Answer", "Trail", "Evidence"]
+        assert field(book["Answer"], "Answer") == "30"
+        assert field(book["Answer"], "Check") == "grounded"
+        assert field(book["Answer"], "Model") == "scripted / scripted-model"
+        trail = cells(book["Trail"])
+        assert [row[4] for row in trail[1:]] == ["150 [table_1]", "120 [table_1]"]
+        # The header row of the table is context and is offered first, as it is on the
+        # card, so the evidence sheet starts with it.
+        assert cells(book["Evidence"])[1][0] == "table_0"
+
+    def test_the_figure_comes_from_the_program_in_the_request(self, client):
+        # There is no answer field to send, so a workbook whose figure disagreed with
+        # its own program is not a thing that can be asked for.
+        book = load_workbook(BytesIO(self.export(client, program="add(150, 120)").content))
+
+        assert field(book["Answer"], "Answer") == "270"
+        assert field(book["Answer"], "Program") == "add(150, 120)"
+
+    def test_it_does_not_ask_the_model(self, client, monkeypatch):
+        monkeypatch.setattr(
+            export_routes, "get_orchestrator", lambda: Orchestrator(ExplodingProvider())
+        )
+
+        assert self.export(client).status_code == 200
+
+    def test_an_invented_figure_is_marked_in_the_file(self, client):
+        # The reason this exists. A workbook that printed 998 and 999 without saying
+        # the report states neither would be the failing this project is built
+        # against, printed, filed and emailed on.
+        book = load_workbook(BytesIO(self.export(client, program="subtract(998, 999)").content))
+
+        assert field(book["Answer"], "Check") == "ungrounded"
+        assert set((field(book["Answer"], "Not in the report") or "").split(", ")) == {
+            "998",
+            "999",
+        }
+
+    def test_a_program_that_will_not_run_is_refused_rather_than_emptied(self, client):
+        assert self.export(client, program="subtract(").status_code == 422
+
+    def test_an_unknown_report_is_a_404(self, client):
+        assert self.export(client, document="not-a-report").status_code == 404
 
 
 class TestWithoutDocuments:

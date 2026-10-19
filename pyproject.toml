@@ -12,6 +12,10 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "httpx>=0.27",
+    # The workbook export. Pure Python, no transitive dependencies beyond the
+    # stdlib's zipfile and an XML writer, and it is imported by the module that
+    # builds the workbook rather than by anything on the answering path.
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]

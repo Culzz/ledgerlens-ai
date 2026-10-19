@@ -95,19 +95,23 @@ export interface Answer {
   reference_answer: string | null;
 }
 
+async function detailFrom(response: Response): Promise<string> {
+  // FastAPI puts the readable reason in `detail`; a bare status code tells the
+  // person looking at it nothing.
+  let detail = `${response.status} ${response.statusText}`;
+  try {
+    const body = await response.json();
+    if (typeof body?.detail === "string") detail = body.detail;
+  } catch {
+    // Not JSON. The status line is all there is.
+  }
+  return detail;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) {
-    // FastAPI puts the readable reason in `detail`; a bare status code tells the
-    // person looking at it nothing.
-    let detail = `${response.status} ${response.statusText}`;
-    try {
-      const body = await response.json();
-      if (typeof body?.detail === "string") detail = body.detail;
-    } catch {
-      // Not JSON. The status line is all there is.
-    }
-    throw new Error(detail);
+    throw new Error(await detailFrom(response));
   }
   return (await response.json()) as T;
 }
@@ -163,4 +167,43 @@ export function recompute(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ document_id: documentId, program, edits }),
   });
+}
+
+/** A file the server built, and what it said to call it. */
+export interface Workbook {
+  blob: Blob;
+  filename: string;
+}
+
+/**
+ * The answer as a spreadsheet.
+ *
+ * The reply is a file rather than JSON, so it does not go through `request`, and
+ * the request carries no figures: the server runs the program again against the
+ * report and writes down what came out. That is why there is a program in the body
+ * and no answer - there is nothing here for the server to take our word for.
+ */
+export async function exportWorkbook(
+  documentId: string,
+  question: string,
+  program: string,
+  model: { provider: string; model: string | null },
+): Promise<Workbook> {
+  const response = await fetch("/api/export/xlsx", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      document_id: documentId,
+      question,
+      program,
+      provider: model.provider,
+      model: model.model,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(await detailFrom(response));
+  }
+
+  const named = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "");
+  return { blob: await response.blob(), filename: named?.[1] ?? "ledgerlens-answer.xlsx" };
 }

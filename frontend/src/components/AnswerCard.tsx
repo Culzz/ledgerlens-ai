@@ -3,6 +3,7 @@ import {
   CaretDown,
   Check,
   Copy,
+  FileXls,
   MarkdownLogo,
   ShieldCheck,
   SlidersHorizontal,
@@ -12,7 +13,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import type { Answer, Audit, FigureEdit, Operand, OperandRole, Recompute } from "../api";
-import { recompute } from "../api";
+import { exportWorkbook, recompute } from "../api";
 import { count, formatAnswer, formatCost, formatSeconds, toMarkdown, trustOf } from "../format";
 
 interface Props {
@@ -42,6 +43,22 @@ const SWING = 50;
 // the row names (labels), the results of earlier steps (references) and whole
 // calculations (nested calls). That is the set the API will take an edit for.
 type FigureRole = Extract<OperandRole, "sourced" | "unsourced" | "constant">;
+
+// How long the object URL a download used is kept alive after the click. The
+// browser's download manager reads the blob after the click returns, and revoking
+// in the same tick can take the bytes away before it has. It is a blob, not a
+// connection, so leaving one behind for a minute costs nothing.
+const REVOKE_MS = 60_000;
+
+/** Hand a file to the browser's download manager. */
+function save(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), REVOKE_MS);
+}
 
 interface Figure {
   step: number;
@@ -100,6 +117,8 @@ export default function AnswerCard({ answer, documentId, source, offline }: Prop
   const [problem, setProblem] = useState<string | null>(null);
   const [flashed, setFlashed] = useState<string | null>(null);
   const [copied, setCopied] = useState<"program" | "markdown" | null>(null);
+  const [exporting, setExporting] = useState<"working" | "done" | null>(null);
+  const [exportProblem, setExportProblem] = useState<string | null>(null);
 
   // Drags overlap, so a reply that is no longer the newest one is dropped rather
   // than allowed to overwrite a later figure with an earlier answer.
@@ -189,6 +208,30 @@ export default function AnswerCard({ answer, documentId, source, offline }: Prop
     } catch {
       // The clipboard is blocked outside a secure context. Everything copied here
       // is on screen anyway, so there is nothing to recover from.
+    }
+  }
+
+  // The workbook is built by the server from the program and the report, not from
+  // what is on this screen, and it follows the program that is on this screen -
+  // including the one a reader has moved a figure in. A what-if exports as a
+  // what-if, with the moved figure marked as one the report does not state.
+  async function download() {
+    if (program === null) return;
+    setExporting("working");
+    setExportProblem(null);
+    try {
+      const file = await exportWorkbook(documentId, answer.question, program, {
+        provider: answer.provider,
+        model: answer.model,
+      });
+      save(file.blob, file.filename);
+      setExporting("done");
+      window.setTimeout(() => setExporting((current) => (current === "done" ? null : current)), FLASH_MS);
+    } catch (error) {
+      setExporting(null);
+      setExportProblem(
+        error instanceof Error ? error.message : "The workbook could not be built.",
+      );
     }
   }
 
@@ -303,9 +346,33 @@ export default function AnswerCard({ answer, documentId, source, offline }: Prop
                   <MarkdownLogo size={14} />
                 )}
               </button>
+              <button
+                className="export"
+                onClick={() => void download()}
+                disabled={exporting === "working"}
+                title="A spreadsheet of the answer, the audit trail and the evidence"
+                aria-label="Download this answer as a spreadsheet, with its audit trail and evidence"
+              >
+                {exporting === "done" ? (
+                  <>
+                    <Check size={14} weight="bold" />
+                    <span>Saved</span>
+                  </>
+                ) : (
+                  <>
+                    <FileXls size={14} />
+                    <span>{exporting === "working" ? "Building" : "Export"}</span>
+                  </>
+                )}
+              </button>
             </div>
             <pre>{program}</pre>
           </div>
+          {exportProblem && (
+            <p className="export-problem" role="status">
+              The spreadsheet could not be built: {exportProblem}
+            </p>
+          )}
           {audit && (
             <AuditTrail
               audit={audit}

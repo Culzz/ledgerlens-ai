@@ -160,3 +160,22 @@ class RecomputeResponse(BaseModel):
     # run does on /api/ask.
     audit: GroundingOut | None = None
     failure: str | None = None
+
+
+class ExportRequest(BaseModel):
+    """A finished answer, named rather than sent.
+
+    The program and the question are enough to rebuild everything the workbook
+    holds, so the caller does not forward the answer's figures back and the file
+    cannot contain a number this process did not compute. No model is called to
+    serve it.
+    """
+
+    document_id: str = Field(min_length=1, max_length=200)
+    question: str = Field(min_length=1, max_length=600)
+    program: str = Field(min_length=1, max_length=2000)
+    # The model that wrote the program, as the answer reported it, recorded in the
+    # file so a spreadsheet does not lose where its program came from. Display only:
+    # nothing here is decided by it, and empty is a valid thing to be.
+    provider: str = Field(default="", max_length=80)
+    model: str | None = Field(default=None, max_length=120)

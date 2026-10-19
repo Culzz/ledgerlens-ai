@@ -871,10 +871,12 @@ table.statement tr:last-child td {
   border-radius: var(--radius);
 }
 
-/* Room on the right for the two copy buttons, which float over the first line. */
+/* Room on the right for the tools, which float over the first line. Measured from
+   the widest the row gets: two 34px buttons and the labelled export, plus the gaps
+   and the 6px inset. */
 .program pre {
   margin: 0;
-  padding: 12px 82px 12px 13px;
+  padding: 12px 156px 12px 13px;
   overflow-x: auto;
   font-family: var(--mono);
   font-size: 12.5px;
@@ -914,6 +916,70 @@ table.statement tr:last-child td {
 .copy:hover {
   color: var(--ink);
   border-color: var(--rule-strong);
+}
+
+/* The one labelled control in here. Someone who wants the file is not looking for
+   an icon, and the label is the difference between a feature and a secret. */
+.export {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: var(--rule-soft);
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.export:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.export:disabled {
+  opacity: 0.65;
+  cursor: progress;
+}
+
+.export-problem {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--accent);
+}
+
+/* Same trick as the copy buttons: 34 drawn, 44 to hit. */
+.export::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+
+/* On a phone the label is the first thing to go. The room it takes is worth more
+   than the word, and the icon with the aria-label and the title still says what
+   the button is. */
+@media (max-width: 619px) {
+  .export {
+    width: 34px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .export span {
+    display: none;
+  }
+
+  .program pre {
+    padding-right: 118px;
+  }
 }
 
 /* --- trust, and the audit trail --------------------------------------------
