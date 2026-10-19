@@ -304,6 +304,7 @@ evaluation/  benchmark runner, baselines, metrics, reports
 data/        dataset and uploads, git-ignored
 docs/        requirements, architecture, evaluation plan, security
 scripts/     data download and local run helpers
+api/         the one function Vercel serves, which imports the app above
 ```
 
 ## Getting started
@@ -329,20 +330,30 @@ its Medium and Small chat models while its Ministral ones still answer.
 
 ## Running it somewhere
 
-The image builds the frontend and the API together, so there is one container, one port and one URL.
-It gets built on the host's machines, which is why nothing here needs Docker working locally.
+One Vercel project. The frontend is built at deploy time and served from the CDN; the API is a single
+Python function at `api/index.py`, which imports the same `create_app()` uvicorn runs locally — there
+is no second code path and no CORS between the halves.
 
-`render.yaml` is the whole deploy. Push the repository, then on Render: **New → Blueprint**, point it
-at the repository. It reads the file, builds the image, and asks for `MISTRAL_API_KEY` in the
-dashboard — nothing else needs a value. The service comes up at `https://<name>.onrender.com`.
+`vercel.json` is the whole deploy. It builds `frontend/dist`, fetches the FinQA dev split during the
+build (the dataset is not committed), and gives the function sixty seconds, which is enough for a
+model call plus a repair round on a free tier that answers in ten to thirty. The function bundle
+carries `backend/` and `data/`; the build output never enters it.
+
+Add a project on Vercel, import the repository, and set `MISTRAL_API_KEY` in Environment Variables.
+The framework preset is set to none in `vercel.json`, so leave the dashboard's detection alone;
+nothing else needs a value. The first deploy takes a few minutes and every push rebuilds it.
 
 With no key set the app still runs and answers nothing, saying why on the card, so a deploy without a
 key is still a working demo of the retrieval and the interface.
 
-Two things about free tiers. The instance sleeps after fifteen minutes with no traffic and takes
-about a minute to wake, so the first question after a quiet spell is slow. And the key is a shared
-secret sitting behind a public URL, which is why the app paces itself between calls and waits out a
-rate limit rather than spending through one.
+Two things about free tiers. A function is created on demand, so the first request after a quiet
+spell pays for loading the corpus — a second or two, not a minute. And the key is a shared secret
+sitting behind a public URL, which is why the app paces itself between calls and waits out a rate
+limit rather than spending through one.
+
+The `Dockerfile` is left over from an earlier deploy target. It builds the same app as one image, and
+nothing in the hosted path uses it.
+
 
 ## Plan
 
