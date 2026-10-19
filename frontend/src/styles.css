@@ -1965,3 +1965,96 @@ table.statement tr:last-child td {
     border-left: 1px solid var(--rule);
   }
 }
+
+/* --- density ---------------------------------------------------------------
+   A reader who spends a day in a table wants more rows on screen; a reader
+   showing the app to somebody wants the room. The setting is spacing and nothing
+   else - no type size, no tap target, no colour - so switching it cannot make the
+   app harder to use, only heavier or lighter to read. It is a desk-width control,
+   which is why the button is not drawn on a phone, where there is no room to
+   reclaim. */
+
+.masthead-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.density {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  min-height: 28px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.density:hover {
+  color: var(--ink);
+  background: var(--rule-soft);
+}
+
+@media (min-width: 900px) {
+  .density {
+    display: flex;
+  }
+}
+
+/* Once the panes are columns, the same content in less air. Vertical rhythm only,
+   so the horizontal padding set at each width above stays exactly as it was. */
+@media (min-width: 900px) {
+  :root[data-density="compact"] .pane-head {
+    padding-top: 12px;
+    padding-bottom: 7px;
+  }
+
+  :root[data-density="compact"] .pane-body {
+    padding-top: 12px;
+    padding-bottom: 26px;
+  }
+
+  :root[data-density="compact"] .record {
+    padding-top: 7px;
+    padding-bottom: 7px;
+  }
+
+  :root[data-density="compact"] table.statement th,
+  :root[data-density="compact"] table.statement td {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  :root[data-density="compact"] .prose li {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+
+  :root[data-density="compact"] .sheet-head {
+    padding-bottom: 8px;
+  }
+
+  :root[data-density="compact"] .claim {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  :root[data-density="compact"] .tally-cell {
+    padding-top: 7px;
+    padding-bottom: 8px;
+  }
+
+  :root[data-density="compact"] .brief-note {
+    margin-top: 12px;
+  }
+}

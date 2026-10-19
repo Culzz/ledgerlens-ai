@@ -1,4 +1,13 @@
-import { Article, Books, ChatCircleDots, FileText, Info, WarningCircle, X } from "@phosphor-icons/react";
+import {
+  Article,
+  Books,
+  ChatCircleDots,
+  FileText,
+  Info,
+  Rows,
+  WarningCircle,
+  X,
+} from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -22,6 +31,11 @@ import { count } from "./format";
 // ones show one at a time with the tab bar, which is the same app rather than a
 // reduced version of it.
 type View = "library" | "report" | "ask";
+
+// Spacing only, and only at desk widths - see the compact block in styles.css.
+type Density = "comfortable" | "compact";
+
+const DENSITY_KEY = "ledgerlens.density";
 
 const TABS = [
   { id: "library" as const, label: "Library", Icon: Books },
@@ -47,6 +61,16 @@ export default function App() {
   // A run stops after the question already in flight. That one cannot be recalled,
   // and pretending otherwise would be a lie about what was spent.
   const stop = useRef(false);
+  // Remembered across visits: a reader who wants a dense table wants it tomorrow
+  // too, and a setting that resets on reload is a setting nobody uses.
+  const [density, setDensity] = useState<Density>(() =>
+    localStorage.getItem(DENSITY_KEY) === "compact" ? "compact" : "comfortable",
+  );
+
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+    localStorage.setItem(DENSITY_KEY, density);
+  }, [density]);
 
   // Open a report to begin with, so a first visit lands on a real table with real
   // questions rather than on three empty panels.
@@ -160,17 +184,34 @@ export default function App() {
             Ledger<em>Lens</em>
           </span>
         </a>
-        {health && (
-          <div className="status">
-            <span className="status-dot" data-offline={offline} aria-hidden="true" />
-            <span className="sr-only">{offline ? "No model configured." : "Model connected."}</span>
-            <span className="status-narrow">{count(health.documents)} reports</span>
-            <span className="status-wide">
-              <b>{health.provider}</b>
-              {health.model ? ` · ${health.model}` : ""} · {count(health.documents)} reports
-            </span>
-          </div>
-        )}
+        <div className="masthead-end">
+          <button
+            className="density"
+            onClick={() => setDensity(density === "compact" ? "comfortable" : "compact")}
+            aria-label={`Use ${density === "compact" ? "comfortable" : "compact"} spacing`}
+            title={
+              density === "compact"
+                ? "Go back to comfortable spacing"
+                : "Fit more rows on screen"
+            }
+          >
+            <Rows size={14} weight="bold" aria-hidden="true" />
+            <span>{density === "compact" ? "Comfortable" : "Compact"}</span>
+          </button>
+          {health && (
+            <div className="status">
+              <span className="status-dot" data-offline={offline} aria-hidden="true" />
+              <span className="sr-only">
+                {offline ? "No model configured." : "Model connected."}
+              </span>
+              <span className="status-narrow">{count(health.documents)} reports</span>
+              <span className="status-wide">
+                <b>{health.provider}</b>
+                {health.model ? ` · ${health.model}` : ""} · {count(health.documents)} reports
+              </span>
+            </div>
+          )}
+        </div>
       </header>
 
       {error && (
