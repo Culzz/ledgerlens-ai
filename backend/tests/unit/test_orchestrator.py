@@ -13,6 +13,7 @@ import pytest
 from app.services.llm import Completion, Usage
 from app.services.reasoning import (
     GROUNDED,
+    RERANKED,
     UNGROUNDED,
     Document,
     Orchestrator,
@@ -121,6 +122,44 @@ class TestRetrieval:
             assert "top_k" in str(exc)
         else:  # pragma: no cover - the assertion below is the test
             raise AssertionError("top_k=0 should have been refused")
+
+    def test_a_retriever_that_is_not_one_of_the_two_is_refused(self):
+        try:
+            Orchestrator(ScriptedProvider(""), retriever="semantic")
+        except ValueError as exc:
+            assert "retriever" in str(exc)
+        else:  # pragma: no cover - the assertion below is the test
+            raise AssertionError("an unknown retriever should have been refused")
+
+    def test_a_pool_too_shallow_to_hold_top_k_is_refused(self):
+        try:
+            Orchestrator(ScriptedProvider(""), top_k=10, pool=4)
+        except ValueError as exc:
+            assert "pool" in str(exc)
+        else:  # pragma: no cover - the assertion below is the test
+            raise AssertionError("pool=4 with top_k=10 should have been refused")
+
+    def test_the_reranked_retriever_offers_the_header_row_once(self):
+        # The header is context and is put in front by both retrievers. The reranked
+        # one ranks only answerable units, so it cannot offer it a second time as a
+        # candidate - which is what its own slot used to be spent on.
+        retrieval = Orchestrator(ScriptedProvider(""), retriever=RERANKED).retrieve(
+            DOCUMENT, "revenue in 2019"
+        )
+
+        labels = [citation.label for citation in retrieval.citations]
+        assert labels[0] == "table_0"
+        assert len(labels) == len(set(labels))
+
+    def test_the_reranked_retriever_ranks_only_units_that_can_be_an_answer(self):
+        retrieval = Orchestrator(ScriptedProvider(""), retriever=RERANKED, top_k=1).retrieve(
+            DOCUMENT, "cost of sales in 2019"
+        )
+
+        # The header plus one ranked unit, the same ceiling as the lexical one.
+        assert len(retrieval.citations) == 2
+        assert retrieval.citations[0].label == "table_0"
+        assert retrieval.citations[1].label != "table_0"
 
 
 class TestResolve:

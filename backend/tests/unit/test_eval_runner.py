@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+from app.core.config import get_settings
 from app.services.dataset import FinQAExample
 from app.services.llm import (
     BudgetLedger,
@@ -17,9 +19,11 @@ from app.services.llm import (
     ProviderRateLimited,
     ProviderRequestFailed,
 )
+from app.services.reasoning import RERANKED
 
-from evaluation.baselines import DirectLLM
+from evaluation.baselines import DirectLLM, ProgramLLM
 from evaluation.run_eval import (
+    build_config,
     execute,
     load_predictions,
     percentile,
@@ -375,6 +379,41 @@ class TestReport:
 
     def test_render_handles_an_empty_run(self):
         assert render({"n": 0}, {}, complete=False) == "no questions were scored"
+
+
+class TestWhichRetriever:
+    """Which retriever a run used has to be readable from the run, not inferred.
+
+    Runs A, D and E were recorded before there was a choice, so the default has to
+    keep producing the same name they were recorded under.
+    """
+
+    @staticmethod
+    def provider():
+        return FakeLLM(responder=lambda messages: "ANSWER: 1")
+
+    def test_the_default_retriever_is_not_in_the_name(self):
+        assert ProgramLLM(self.provider()).name == "program+repair1@fake"
+
+    def test_a_reranked_run_says_so_in_its_name(self):
+        system = ProgramLLM(self.provider(), retriever=RERANKED)
+        assert system.name == "program+reranked+repair1@fake"
+
+    def test_the_retriever_reaches_the_orchestrator(self):
+        system = ProgramLLM(self.provider(), retriever=RERANKED)
+        assert system.orchestrator.retriever == RERANKED
+
+    def test_the_run_config_records_it(self):
+        system = ProgramLLM(self.provider(), retriever=RERANKED)
+        args = SimpleNamespace(split="dev.json", tolerance=1e-3, limit=None)
+        config = build_config(
+            args=args,
+            settings=get_settings(),
+            provider=system.provider,
+            system=system,
+            examples=[],
+        )
+        assert config["retriever"] == RERANKED
 
 
 class TestPercentile:

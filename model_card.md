@@ -13,6 +13,7 @@ Not a single trained model. A small system made of parts, and not all the parts 
 |---|---|---|
 | LLM | provider-neutral adapter over the OpenAI chat-completions shape | built. Reads the question, writes the program or the answer. Never a source of numbers |
 | keyword search | in-process BM25 over table rows and narrative lines | built |
+| reranking | the lexical top 25 rescored by a weighted feature sum tuned on train; deterministic, no model | built. In the served system; runs A, D and E predate it and are recorded as lexical |
 | calculation | Python `Decimal`, a fixed allowlist of operations, plus named financial formulas (`cagr`, `dcf`, `perpetuity`, `present_value`, `ebitda`, `quick_ratio`, `debt_to_equity`) for the product path | built. What the benchmark measured is the arithmetic and the table selection; the formulas are never used by the benchmark prompt |
 | verification | every figure in a written program looked up in the whole report; a program resting on no figure the report states is refused | built |
 | repair | a program that will not run, or that fails the check, goes back to the model once with the engine's error | built |
@@ -72,8 +73,13 @@ the weak point.
   42 replies in D, 4.8% of the split, built entirely out of figures the report does not state, and
   refused them; on the live run it refused 39 and every one of them was wrong already.
 - **Retrieval is measured, not solved.** Ranked evidence caps end-to-end accuracy at complete@10 of
-  0.81 on FinQA, and FinQA's documents are small enough that the cap is not what is binding here. It
-  would bind on a real report, which is the one thing this benchmark cannot test.
+  0.90 on FinQA, up from 0.81 before the reranker, and the eight questions no lexical pass can reach
+  set a floor under that. FinQA's documents are small enough that the cap is not what is binding here.
+  It would bind on a real report, which is the one thing this benchmark cannot test.
+- **The reranker's gain is a retrieval result, not an accuracy result.** It was measured on the
+  retrieval ceiling, where the instrument is deterministic and needs no model. Its effect on the
+  end-to-end numbers has not been measured, because doing so costs a full run and the churn between
+  runs of the same configuration is wider than the effect being looked for.
 - **The benchmark isn't the product.** FinQA gives you the table already parsed. The PDF path isn't
   covered by it and needs separate evaluation. A good score here says nothing about whether the PDF
   reader works.

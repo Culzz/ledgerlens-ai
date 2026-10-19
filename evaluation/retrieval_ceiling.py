@@ -36,7 +36,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.services.dataset import FinQAExample, load_split
-from app.services.retrieval import BM25Index, build_units, evidence_kinds, gold_unit_ids
+from app.services.retrieval import (
+    DEFAULT_POOL,
+    DEFAULT_WEIGHTS,
+    FEATURES,
+    BM25Index,
+    Candidate,
+    EvidenceUnit,
+    Weights,
+    answerable_units,
+    build_units,
+    evidence_kinds,
+    gold_unit_ids,
+    rerank,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORTS = ROOT / "evaluation" / "reports"
@@ -75,6 +88,12 @@ class CeilingReport:
     skipped_no_annotation: int = 0
     skipped_no_units: int = 0
     gold_inds_disagreements: int = 0
+    # What the retriever was allowed to do. Recorded with the numbers because a
+    # ceiling without its settings is not comparable to anything.
+    pool: int = 0
+    answerable_only: bool = False
+    reranked: bool = False
+    weights: dict = field(default_factory=dict)
     overall: dict = field(default_factory=dict)
     by_evidence: dict = field(default_factory=dict)
 
@@ -107,9 +126,7 @@ def summarise(results: list[QuestionResult], ks: tuple[int, ...]) -> dict:
 
     reciprocal = [1 / r.first_hit_rank for r in results if r.first_hit_rank]
     summary["mrr"] = round(sum(reciprocal) / n, 4) if n else 0.0
-    summary["mean_gold_units"] = (
-        round(sum(r.gold_units for r in results) / n, 3) if n else 0.0
-    )
+    summary["mean_gold_units"] = round(sum(r.gold_units for r in results) / n, 3) if n else 0.0
     return summary
 
 
@@ -123,6 +140,35 @@ def gold_inds_disagreements(examples: list[FinQAExample]) -> int:
         if from_gold_inds != set(example.ann_table_rows):
             count += 1
     return count
+
+
+def load_weights(path: str | None) -> Weights:
+    """The reranker's weights: the module's tuned defaults, or a JSON override.
+
+    An override has to be a whole weight vector, not a patch: a run's settings are
+    recorded with its numbers, and a file that set two of six weights would describe
+    a retriever nobody could reproduce from the record.
+    """
+    if not path:
+        return DEFAULT_WEIGHTS
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    missing = [name for name in FEATURES if name not in raw]
+    if missing:
+        raise SystemExit(f"{path} is missing weights for: {', '.join(missing)}")
+    return Weights(**{name: float(raw[name]) for name in FEATURES})
+
+
+def retriever_name(args, weights: Weights) -> str:
+    """What was run, as one line, for the artifact to carry."""
+    name = f"BM25(k1={args.k1}, b={args.b})"
+    if args.answerable:
+        name += " + answerable only"
+    if args.rerank:
+        shown = " ".join(
+            f"{feature}={value:g}" for feature, value in zip(FEATURES, weights.vector()) if value
+        )
+        name += f" + rerank[{shown}]"
+    return name
 
 
 def render(report: CeilingReport) -> str:
@@ -140,6 +186,13 @@ def render(report: CeilingReport) -> str:
         f"skipped:        {skipped}",
         f"gold_inds:      {report.gold_inds_disagreements} records disagree with ann_*_rows",
         f"gold units:     {report.overall.get('mean_gold_units', 0)} per question",
+        f"pool:           {report.pool} units ranked per question",
+    ]
+    if report.reranked:
+        lines.append(f"weights:        {report.weights}")
+    if report.answerable_only:
+        lines.append("candidates:     answerable units only (table header rows excluded)")
+    lines += [
         "",
         "                " + "".join(f"{'k=' + str(k):>9}" for k in ks),
     ]
@@ -167,7 +220,9 @@ def render(report: CeilingReport) -> str:
     return "\n".join(lines)
 
 
-def save(report: CeilingReport, per_question: list[QuestionResult], out_root: Path, name: str) -> Path:
+def save(
+    report: CeilingReport, per_question: list[QuestionResult], out_root: Path, name: str
+) -> Path:
     stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
     target = out_root / f"{stamp}_retrieval_ceiling_{name}"
     target.mkdir(parents=True, exist_ok=True)
@@ -176,6 +231,10 @@ def save(report: CeilingReport, per_question: list[QuestionResult], out_root: Pa
         "split": report.split,
         "retriever": report.retriever,
         "ks": list(report.ks),
+        "pool": report.pool,
+        "answerable_only": report.answerable_only,
+        "reranked": report.reranked,
+        "weights": report.weights,
         "ground_truth": "qa.ann_table_rows + qa.ann_text_rows",
         "scope": "within the question's own document",
     }
@@ -197,11 +256,45 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--b", type=float, default=0.75)
     parser.add_argument("--out", default=str(DEFAULT_REPORTS))
     parser.add_argument("--no-save", action="store_true")
+    parser.add_argument(
+        "--answerable",
+        action="store_true",
+        help="rank only units that can be an answer, dropping table header rows",
+    )
+    parser.add_argument(
+        "--rerank",
+        action="store_true",
+        help="reorder the top of the lexical ranking with the tuned feature weights",
+    )
+    parser.add_argument(
+        "--pool",
+        type=int,
+        default=None,
+        help=f"how deep to rank before taking k (default {DEFAULT_POOL} when reranking)",
+    )
+    parser.add_argument(
+        "--weights",
+        default=None,
+        help="a JSON file of weights, overriding the module's tuned defaults",
+    )
     args = parser.parse_args(argv)
 
     ks = tuple(sorted({int(part) for part in args.ks.split(",") if part.strip()}))
     if not ks:
         parser.error("at least one k value is required")
+
+    max_k = max(ks)
+    pool = args.pool if args.pool is not None else (DEFAULT_POOL if args.rerank else max_k)
+    if pool < max_k:
+        parser.error(f"the pool is {pool} but k goes up to {max_k}")
+
+    weights = load_weights(args.weights)
+    if args.rerank and not any(
+        value for feature, value in zip(FEATURES, weights.vector()) if feature != "bm25"
+    ):
+        parser.error(
+            "--rerank needs a weight above zero besides bm25, or it only repeats the lexical order"
+        )
 
     path = Path(args.split)
     examples = load_split(path)
@@ -210,14 +303,20 @@ def main(argv: list[str] | None = None) -> int:
 
     index = BM25Index(k1=args.k1, b=args.b)
     candidates_by_record: dict[str, set[str]] = {}
+    units_by_record: dict[str, dict[str, EvidenceUnit]] = {}
+    corpus_units = 0
     for example in examples:
         units = build_units(example)
+        corpus_units += len(units)
+        if args.answerable:
+            # The one definition of which units can be answers, rather than the
+            # filter being restated wherever retrieval happens.
+            units = answerable_units(example)
         candidates_by_record[example.id] = {unit.id for unit in units}
+        units_by_record[example.id] = {unit.id: unit for unit in units}
         for unit in units:
             index.add(unit.id, unit.text)
     index.finalize()
-
-    max_k = max(ks)
     results: list[QuestionResult] = []
     skipped_no_annotation = 0
     skipped_no_units = 0
@@ -233,8 +332,16 @@ def main(argv: list[str] | None = None) -> int:
             skipped_no_units += 1
             continue
 
-        ranked = index.search(example.question, candidates=candidates, top_k=max_k)
-        ranked_ids = [doc_id for doc_id, _ in ranked]
+        ranked = index.search(example.question, candidates=candidates, top_k=pool)
+        if args.rerank:
+            units = units_by_record[example.id]
+            ranked = rerank(
+                example.question,
+                [Candidate(unit=units[doc_id], score=score) for doc_id, score in ranked],
+                weights=weights,
+                top_k=max_k,
+            )
+        ranked_ids = [doc_id for doc_id, _ in ranked][:max_k]
         first_hit = next(
             (rank for rank, doc_id in enumerate(ranked_ids, start=1) if doc_id in gold),
             None,
@@ -259,24 +366,26 @@ def main(argv: list[str] | None = None) -> int:
 
     report = CeilingReport(
         split=str(path),
-        retriever=f"BM25(k1={args.k1}, b={args.b})",
+        retriever=retriever_name(args, weights),
         generated_at=datetime.now(UTC).isoformat(timespec="seconds"),
         ks=ks,
         records=len(examples),
-        corpus_units=len(index),
+        corpus_units=corpus_units,
         evaluated=len(results),
         skipped_no_annotation=skipped_no_annotation,
         skipped_no_units=skipped_no_units,
         gold_inds_disagreements=gold_inds_disagreements(examples),
+        pool=pool,
+        answerable_only=bool(args.answerable),
+        reranked=bool(args.rerank),
+        weights={name: value for name, value in zip(FEATURES, weights.vector())},
     )
     report.overall = summarise(results, ks)
 
     grouped: dict[str, list[QuestionResult]] = defaultdict(list)
     for result in results:
         grouped[result.needs].append(result)
-    report.by_evidence = {
-        group: summarise(rows, ks) for group, rows in sorted(grouped.items())
-    }
+    report.by_evidence = {group: summarise(rows, ks) for group, rows in sorted(grouped.items())}
 
     print(render(report))
 

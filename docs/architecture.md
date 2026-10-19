@@ -29,8 +29,8 @@ never supplies a number and never runs code.
                     ┌────────────────────────┐
                     │ hybrid retrieval       │
                     │ keyword (BM25, built)  │
+                    │ feature rerank (built) │
                     │ + dense (planned)      │
-                    │ + rerank (planned)     │
                     └────────────┬───────────┘
                                  ▼
                     ┌────────────────────────┐
@@ -62,8 +62,15 @@ an exact search costs milliseconds and a server costs a deployment. The verifier
 than whole answers, and it checks them against the entire report rather than the retrieved rows,
 because a retrieval miss must not read as an invention.
 
-Only the keyword leg is built. Everything else on the product track is the plan, and the model card
-says which parts exist.
+The reranker is the one part of that box that is finished and has no model in it. It is a weighted sum
+over five features of a candidate — lexical score, numbers, coverage, phrase, and a table-row prior —
+and the weights were tuned on the train split by `evaluation/tune_reranker.py`, which writes the grid,
+the protocol and both splits' numbers to `evaluation/reports/rerank_weights.json`. It reorders the
+lexical top 25 and returns 10. The reason it exists as a separate, deterministic stage is that it can
+then be measured on its own: the retrieval ceiling moves when the retriever changes, so a change there
+is provable without spending a model call, which is not true of anything downstream of the prompt.
+
+Everything else on the product track is the plan, and the model card says which parts exist.
 
 ## Two layers of calculation
 

@@ -223,6 +223,8 @@ def render(summary: dict[str, Any], config: dict[str, Any], *, complete: bool) -
     if config.get("max_repairs") is not None:
         gate = "on" if config.get("enforce_grounding") else "off"
         lines.append(f"trust:       repairs up to {config['max_repairs']}, grounding gate {gate}")
+    if config.get("retriever"):
+        lines.append(f"retriever:   {config['retriever']}")
     if summary.get("repaired"):
         lines.append(
             f"  {summary['repaired']} answer(s) took more than one attempt "
@@ -462,6 +464,9 @@ def build_config(
         # that does not say which one it is cannot be compared with anything.
         "max_repairs": getattr(system, "max_repairs", None),
         "enforce_grounding": getattr(system, "enforce_grounding", None),
+        # Which retriever supplied the evidence. Recorded for the same reason as the
+        # repairs: the prompt is only reproducible if the units in it are.
+        "retriever": getattr(system, "retriever", None),
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "budget_limit_usd": settings.llm_monthly_budget_usd,
     }

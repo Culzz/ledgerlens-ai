@@ -21,6 +21,7 @@ from app.services.reasoning import (
     FORMAT_JSON,
     FORMAT_UNEXECUTED,
     FORMAT_UNPARSED,
+    LEXICAL,
     Document,
     Orchestrator,
     ParsedAnswer,
@@ -41,6 +42,7 @@ class ProgramLLM:
         max_tokens: int = 1024,
         max_repairs: int = DEFAULT_MAX_REPAIRS,
         enforce_grounding: bool = True,
+        retriever: str = LEXICAL,
     ) -> None:
         self.provider = provider
         self.orchestrator = Orchestrator(
@@ -50,11 +52,16 @@ class ProgramLLM:
             max_tokens=max_tokens,
             max_repairs=max_repairs,
             enforce_grounding=enforce_grounding,
+            retriever=retriever,
         )
         # The configuration goes in the name, because two runs of "program" with
         # different retry behaviour are different systems and a report that cannot
-        # tell them apart is not a report.
+        # tell them apart is not a report. The retriever is named only when it is not
+        # the default, which is what keeps runs A, D and E the same strings they were
+        # recorded under.
         parts = ["program"]
+        if retriever != LEXICAL:
+            parts.append(retriever)
         if max_repairs:
             parts.append(f"repair{max_repairs}")
         if not enforce_grounding:
@@ -63,6 +70,7 @@ class ProgramLLM:
         self.prompt_version = self.orchestrator.prompt_version
         self.max_repairs = max_repairs
         self.enforce_grounding = enforce_grounding
+        self.retriever = retriever
 
     def answer(self, example: FinQAExample) -> Prediction:
         document = Document.from_example(example)

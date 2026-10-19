@@ -35,12 +35,18 @@ Switching to a real provider is configuration, not code.
 ```
 python -m evaluation.replay_gold_programs --split data/finqa/dev.json
 python -m evaluation.retrieval_ceiling   --split data/finqa/dev.json
+python -m evaluation.retrieval_ceiling   --split data/finqa/dev.json --answerable --rerank
+python -m evaluation.tune_reranker       --limit 2500
 python -m evaluation.check_provider
 python -m evaluation.run_eval            --split data/finqa/dev.json --system program --limit 150
 python -m evaluation.review_run          evaluation/reports/<run-directory>
 python -m evaluation.compare_runs        evaluation/reports/<run-a> evaluation/reports/<run-b>
 python -m evaluation.audit_grounding     evaluation/reports/<run-directory>
 ```
+
+The first two cost nothing and spend no quota: they replay reasoning programs the dataset already
+contains, and they measure retrieval without a model in the loop. `tune_reranker` needs
+`data/finqa/train.json`, which the download script fetches but the repository does not carry.
 
 `check_provider` spends one request to confirm the key and the model work, which is cheaper than
 finding out forty minutes into a run.
@@ -126,25 +132,62 @@ arithmetic better.
 
 ### Retrieval
 
-BM25 over 26,834 evidence units, dev split, 818 questions carrying annotations:
+BM25 over 26,834 evidence units, dev split, 818 questions carrying annotations. `complete@k` is the
+share of questions where *all* the evidence a question needs is inside the top k, so it caps
+end-to-end accuracy for anything that reads only those k units.
 
-| k | recall@k | complete@k |
-| ---- | ---- | ---- |
-| 1 | 0.432 | 0.329 |
-| 3 | 0.662 | 0.532 |
-| 5 | 0.764 | 0.665 |
-| 10 | 0.868 | 0.812 |
+| configuration | recall@10 | complete@5 | complete@10 | MRR |
+| ---- | ---- | ---- | ---- | ---- |
+| BM25, every unit | 0.868 | 0.665 | 0.812 | 0.686 |
+| the header row is no longer a candidate | 0.879 | 0.675 | 0.828 | 0.697 |
+| then the reranker | 0.939 | 0.785 | 0.903 | 0.821 |
 
-`complete@k` is the share of questions where *all* the evidence a question needs is inside the top
-k, so it caps end-to-end accuracy for anything that reads only those k units.
+Two changes, measured separately, because they are different claims.
 
-Run: `2026-10-16T11-57-33_retrieval_ceiling_dev` — `BM25(k1=1.5, b=0.75)`, 26,834 units, 818
-questions scored, 65 with no annotated evidence. Its `config.json` and `metrics.json` are committed.
+**The header row is a label, not evidence.** Row 0 of every table holds the column headings, and it
+is never the answer: across all 883 dev records the annotation points at it zero times. BM25 could
+not know that, and put it in the top ten for 48% of questions — spending a slot to re-tell the reader
+something it already has, since the header goes at the front of the prompt either way. Keeping it out
+of the candidate set is worth +1.6 points. `EvidenceUnit.answerable` in `units.py` is the whole
+definition of the rule, and everything that retrieves goes through it rather than restating it.
 
-A useful thing fell out of that number. FinQA documents are small — a few table rows and a couple of
-dozen narrative lines — so a prompt containing the whole document already contains the evidence. On
-this benchmark retrieval is not the bottleneck; the reasoning is. Retrieval and citation are what
-the product needs, and FinQA cannot tell you whether they work.
+**Then rank what BM25 found.** BM25 gets the right table near the top and cannot order what is inside
+it, because it only knows terms. The reranker scores the lexical top 25 by a weighted sum of features
+— the lexical score, the share of the question's numbers the unit contains, word coverage, a phrase
+match, and a prior that a table row is evidence more often than a narrative line, 17.4% of rows
+against 1.8% of lines — and keeps the best 10. Worth +7.6 points.
+
+| k=10, by what the question needs | n | BM25 | + not-the-header | + reranker |
+| ---- | ---- | ---- | ---- | ---- |
+| table only | 504 | 0.827 | 0.843 | 0.960 |
+| table + narrative | 124 | 0.629 | 0.661 | 0.710 |
+| narrative only | 190 | 0.890 | 0.895 | 0.879 |
+
+That last column is a real trade rather than a clean win: narrative-only questions give up 1.6 points
+and the other 628 gain between 4.8 and 11.7. Worth saying out loud instead of quoting the total.
+
+The model is one number, chosen on the train split (2,500 records, 2,277 questions) and reported once
+on dev: `bm25=1, kind=0.5`. The ablation is the interesting part — beside BM25, the table prior alone
+takes train complete@10 from 0.800 to 0.867, and adding the four lexical features to it reaches
+0.871. Four tenths of a point for four more weights, and on dev the one-feature weighting scores
+0.903 against the all-features one's 0.896. The rest was not buying anything that survived the split,
+so it is not in the model. `evaluation/tune_reranker.py` runs the grid, prefers the flattest weighting
+among those tied within 0.002 on train, re-scores the top five on dev afterwards to show the choice is
+not carrying the result, and writes `evaluation/reports/rerank_weights.json`.
+
+Runs: `2026-10-16T11-57-33_retrieval_ceiling_dev` for BM25, then
+`2026-10-19T00-08-49_retrieval_ceiling_dev` and `2026-10-19T00-08-22_retrieval_ceiling_dev` for the two
+rows below it. Each run's `config.json` and `metrics.json` are committed, so every number above can be
+re-derived from the split rather than taken on trust.
+
+The reranker is not in the end-to-end runs A, D and E, which were recorded before it existed. The
+retriever is a named setting on the orchestrator, so a run that used it is a different system and
+carries `rerank` in its name; the results below describe the system they were measured on.
+
+A useful thing fell out of the ceiling number. FinQA documents are small — a few table rows and a
+couple of dozen narrative lines — so a prompt containing the whole document already contains the
+evidence. On this benchmark retrieval is not the bottleneck; the reasoning is. Retrieval and citation
+are what the product needs, and FinQA cannot tell you whether they work.
 
 ### Verification
 
@@ -311,7 +354,7 @@ rate limit rather than spending through one.
 5. orchestrator: retrieve the evidence, then write a program           done
 6. verification: check the figures, refuse what has no home, repair a  done
    program that will not run
-7. hybrid retrieval and reranking
+7. retrieval: keep labels out of the candidate set, then rerank         done
 8. PDF ingestion
 9. API and frontend                                                    done
 10. experiments and writeup
@@ -328,9 +371,13 @@ Repeating D on a second day, and running a subset of the split several times, wo
 around every later claim instead of a plausible one. Quota on a free tier is what makes that a plan
 rather than a paragraph.
 
-Retrieval is measured but not improved, and milestone 7 is the hybrid pass. Since the ceiling says
-retrieval is not what is holding the benchmark back, that will be reported as a retrieval metric and
-not as an accuracy claim.
+Retrieval is where the measurement is not under-powered, because it needs no model: the ceiling above
+moves deterministically when the retriever changes, so an improvement there is provable on a laptop in
+seconds rather than inferred from a run-to-run difference. That is why it came before anything else on
+the list, and why the two changes are reported as a retrieval metric with their own runs rather than as
+an accuracy claim. The dense half of the plan is still open — eight dev questions have no gold unit
+that lexical matching can reach at all, which is a floor no amount of reranking lifts — and the honest
+place to spend on it is after the measurement above is wide enough to tell it worked.
 
 ## What this isn't
 

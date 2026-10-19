@@ -5,16 +5,24 @@ from __future__ import annotations
 import pytest
 from app.services.dataset import FinQAExample
 from app.services.retrieval import (
+    FEATURES,
     TABLE,
     TEXT,
     BM25Index,
+    Candidate,
+    EvidenceUnit,
+    Weights,
+    answerable_units,
     build_units,
     evidence_kinds,
     gold_unit_ids,
+    lexical_weights,
+    rerank,
     row_text,
     tokenize,
     unit_id,
 )
+from app.services.retrieval.rerank import features
 
 
 def example(**overrides) -> FinQAExample:
@@ -89,6 +97,141 @@ class TestUnits:
     def test_evidence_kinds(self, table_rows, text_rows, expected):
         ex = example(ann_table_rows=table_rows, ann_text_rows=text_rows)
         assert evidence_kinds(ex) == expected
+
+
+class TestAnswerableUnits:
+    """Row 0 of a table is a label, not evidence. Indexed, never returned."""
+
+    def test_the_header_row_is_indexed(self):
+        header = next(u for u in build_units(example()) if u.kind == TABLE and u.index == 0)
+        assert header.text == "2016 2015"
+
+    def test_the_header_row_is_not_answerable(self):
+        header = next(u for u in build_units(example()) if u.kind == TABLE and u.index == 0)
+        assert header.answerable is False
+
+    def test_every_data_row_is_answerable(self):
+        rows = [u for u in build_units(example()) if u.kind == TABLE]
+        assert [u.answerable for u in rows] == [False, True]
+
+    def test_narrative_lines_are_answerable(self):
+        assert all(u.answerable for u in build_units(example()) if u.kind == TEXT)
+
+    def test_answerable_units_is_the_one_place_the_header_is_left_out(self):
+        everything = {u.id for u in build_units(example())}
+        answerable = {u.id for u in answerable_units(example())}
+        assert everything - answerable == {unit_id("DOC/1", TABLE, 0)}
+
+    def test_the_header_row_is_the_only_thing_left_out(self):
+        # Nothing else is a label. An empty narrative line is still a unit, because
+        # the annotation indices have to keep lining up.
+        assert all(u.answerable for u in build_units(example()) if u.kind == TEXT)
+
+
+class TestRerank:
+    """A deterministic second pass over the head of a lexical ranking."""
+
+    @staticmethod
+    def units() -> dict[str, EvidenceUnit]:
+        return {unit.id: unit for unit in answerable_units(example())}
+
+    @staticmethod
+    def row(units):
+        return units[unit_id("DOC/1", TABLE, 1)]
+
+    @staticmethod
+    def line(units, index=0):
+        return units[unit_id("DOC/1", TEXT, index)]
+
+    def test_the_feature_names_and_the_weights_stay_in_step(self):
+        # A weight is set by name and read by position. If the two ever disagree,
+        # every weight silently means the wrong feature and nothing else notices.
+        assert FEATURES == ("bm25", "numbers", "coverage", "phrase", "kind")
+        # The default is BM25 on its own: the order retrieval had already given.
+        assert Weights().vector() == (1.0, 0.0, 0.0, 0.0, 0.0)
+        assert lexical_weights() == Weights()
+        named = Weights(bm25=1.0, numbers=2.0, coverage=3.0, phrase=4.0, kind=5.0)
+        assert named.vector() == (1.0, 2.0, 3.0, 4.0, 5.0)
+
+    def test_no_weights_is_the_lexical_order(self):
+        units = self.units()
+        candidates = [
+            Candidate(unit=self.line(units, 0), score=2.0),
+            Candidate(unit=self.row(units), score=1.0),
+        ]
+        ranked = rerank("net sales", candidates, weights=lexical_weights())
+        assert [doc for doc, _ in ranked] == [self.line(units, 0).id, self.row(units).id]
+
+    def test_a_table_prior_lifts_a_row_over_a_better_scoring_line(self):
+        units = self.units()
+        candidates = [
+            Candidate(unit=self.row(units), score=1.0),
+            Candidate(unit=self.line(units, 0), score=2.0),
+        ]
+        ranked = rerank("net sales", candidates, weights=Weights(bm25=1.0, kind=1.0))
+        assert next(doc for doc, _ in ranked) == self.row(units).id
+
+    def test_a_unit_naming_the_questions_figure_comes_first(self):
+        units = self.units()
+        # The row states 2016 and 100. The second narrative line states no figure.
+        candidates = [
+            Candidate(unit=self.line(units, 1), score=1.0),
+            Candidate(unit=self.row(units), score=1.0),
+        ]
+        ranked = rerank(
+            "what were net sales of 100 in 2016", candidates, weights=Weights(bm25=0.0, numbers=1.0)
+        )
+        assert [doc for doc, _ in ranked] == [self.row(units).id, self.line(units, 1).id]
+
+    def test_a_run_of_words_beats_the_same_words_scattered(self):
+        together = EvidenceUnit(id="a", example_id="D", kind=TEXT, index=0, text="net sales grew")
+        apart = EvidenceUnit(id="b", example_id="D", kind=TEXT, index=1, text="net grew, and sales")
+        ranked = rerank(
+            "net sales",
+            [Candidate(unit=apart, score=1.0), Candidate(unit=together, score=1.0)],
+            weights=Weights(bm25=0.0, phrase=1.0),
+        )
+        assert [doc for doc, _ in ranked] == ["a", "b"]
+
+    def test_features_are_bounded_to_one(self):
+        vector = features(
+            tokenize("a long question about net sales in 2016 and 2015"),
+            tokenize("net sales 2016 100 2015 90"),
+            is_table=True,
+            score=9.0,
+            top_score=9.0,
+        )
+        assert len(vector) == len(FEATURES)
+        assert all(0.0 <= value <= 1.0 for value in vector)
+
+    def test_a_narrative_line_is_not_given_the_table_prior(self):
+        vector = features(
+            tokenize("net sales"),
+            tokenize("net sales rose"),
+            is_table=False,
+            score=1.0,
+            top_score=1.0,
+        )
+        assert vector[FEATURES.index("kind")] == 0.0
+
+    def test_an_empty_candidate_list_is_an_empty_ranking(self):
+        assert rerank("anything", []) == []
+
+    def test_top_k_limits_the_ranking(self):
+        candidates = [Candidate(unit=unit, score=1.0) for unit in self.units().values()]
+        assert len(rerank("net sales", candidates, top_k=1)) == 1
+
+    def test_the_order_does_not_depend_on_the_order_given(self):
+        candidates = [Candidate(unit=unit, score=1.0) for unit in self.units().values()]
+        weights = Weights(bm25=1.0, kind=1.0, numbers=0.5)
+        assert rerank("net sales 2016", candidates, weights=weights) == rerank(
+            "net sales 2016", list(reversed(candidates)), weights=weights
+        )
+
+    def test_scores_come_back_descending(self):
+        candidates = [Candidate(unit=unit, score=1.0) for unit in self.units().values()]
+        scores = [score for _, score in rerank("net sales", candidates)]
+        assert scores == sorted(scores, reverse=True)
 
 
 class TestTokenize:

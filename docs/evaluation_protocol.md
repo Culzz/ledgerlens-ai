@@ -73,9 +73,18 @@ Same questions, same model, same source context where it applies.
 | D | LedgerLens | hybrid + rerank | deterministic engine + verifier |
 
 Built so far: A is `--system direct`, and D is `--system program`, which runs retrieval and the
-engine but still has lexical retrieval where the table says hybrid plus rerank. B and C are the
-middle rungs and are not built, because once the engine is in place a run that hands retrieved rows
-back to the model for it to do the arithmetic itself measures less than the run next to it costs.
+engine. The retrieval legs are not all built: what exists is BM25 with the header row kept out of the
+candidate set, and a deterministic feature reranker whose weights are tuned on train
+(`evaluation/tune_reranker.py`). Dense retrieval is not built. B and C are the middle rungs and are not
+built either, because once the engine is in place a run that hands retrieved rows back to the model for
+it to do the arithmetic itself measures less than the run next to it costs.
+
+Retrieval is measured outside this table, by `evaluation/retrieval_ceiling.py`, because it is the one
+part of the system that can be measured without a model in the loop and therefore without the
+run-to-run churn that makes a small end-to-end difference unreadable. A retrieval change is reported as
+a retrieval number with its own run directory; calling it an accuracy improvement would need an
+end-to-end run with that retriever, and the retriever appears in the run config and in the system name
+so that such a run cannot be confused with one made without it.
 
 Baseline A has to get the table in context. If it's set up to fail, the whole comparison is
 worthless. For scale, the numbers that already exist in the literature: GPT-4 with the table is

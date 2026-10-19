@@ -26,7 +26,19 @@ from typing import Any
 from app.services.calculations import CalculationError, execute_program
 from app.services.dataset import FinQAExample
 from app.services.llm import Completion, LLMProvider, Message, assistant, system, user
-from app.services.retrieval import TABLE, BM25Index, DocumentLike, EvidenceUnit, build_units
+from app.services.retrieval import (
+    DEFAULT_POOL,
+    DEFAULT_WEIGHTS,
+    TABLE,
+    BM25Index,
+    Candidate,
+    DocumentLike,
+    EvidenceUnit,
+    Weights,
+    answerable_units,
+    build_units,
+    rerank,
+)
 
 from .answers import extract_json_object
 from .grounding import Grounding, audit, read_report
@@ -34,9 +46,23 @@ from .grounding import Grounding, audit, read_report
 PROMPT_VERSION = "program-v3"
 
 # How many evidence units reach the prompt. Ten is not a guess: the retrieval
-# measurement on dev put complete@10 at 0.666, so a tenth unit is still buying
-# something. The table's header row is added on top and does not count against it.
+# measurement on dev put complete@10 at 0.812, and complete@25 at 0.944, so units
+# beyond the tenth are still buying something and k is worth spending a reranker on.
+# The table's header row is added on top and does not count against it.
 DEFAULT_TOP_K = 10
+
+# Two retrievers, named, because they are not interchangeable and a run has to say
+# which one it used.
+#
+# LEXICAL is the original: BM25 over every unit in the document, no reordering. Its
+# numbers are the ones in the README's retrieval table, so it stays the default and
+# runs A, D and E remain reproducible.
+#
+# RERANKED scores the same way, over the units that can actually be an answer, and
+# then reorders the head of that list by the features in ``retrieval.rerank``.
+LEXICAL = "lexical"
+RERANKED = "reranked"
+RETRIEVERS = (LEXICAL, RERANKED)
 
 # Room for a short reasoning sentence and a program. Nothing here is a long-form
 # answer, so this is generous rather than tight.
@@ -315,11 +341,18 @@ class Orchestrator:
         prompt_version: str = PROMPT_VERSION,
         max_repairs: int = DEFAULT_MAX_REPAIRS,
         enforce_grounding: bool = True,
+        retriever: str = LEXICAL,
+        pool: int = DEFAULT_POOL,
+        weights: Weights | None = None,
     ) -> None:
         if top_k < 1:
             raise ValueError("top_k must be at least 1")
         if max_repairs < 0:
             raise ValueError("max_repairs cannot be negative")
+        if retriever not in RETRIEVERS:
+            raise ValueError(f"retriever must be one of {RETRIEVERS}, not {retriever!r}")
+        if pool < top_k:
+            raise ValueError(f"the pool is {pool} but top_k is {top_k}")
         self._provider = provider
         self.top_k = top_k
         self.temperature = temperature
@@ -327,6 +360,9 @@ class Orchestrator:
         self.prompt_version = prompt_version
         self.max_repairs = max_repairs
         self.enforce_grounding = enforce_grounding
+        self.retriever = retriever
+        self.pool = pool
+        self.weights = DEFAULT_WEIGHTS if weights is None else weights
 
     @property
     def name(self) -> str:
@@ -337,16 +373,38 @@ class Orchestrator:
 
         The header always goes in. Reading a table means knowing what its columns
         are called, and a system that has the table has them - withholding the
-        header would measure whether BM25 happened to surface it, which is not
-        the question anyone is asking.
+        header would measure whether retrieval happened to surface it, which is not
+        the question anyone is asking. It is also why the reranked retriever can
+        leave the header out of the ranking: it is context rather than a candidate,
+        and it arrives either way.
+
+        Which retriever this is matters, so it is a named setting rather than a
+        silent upgrade. Both score units inside this one document and take the best
+        ``top_k``. The reranked one ranks only the units that can be an answer and
+        reaches deeper before reordering.
         """
         units = build_units(document)
         index = BM25Index()
         index.add_many((unit.id, unit.text) for unit in units)
         index.finalize()
 
+        candidates = answerable_units(document) if self.retriever == RERANKED else units
+        ranked = index.search(
+            question,
+            candidates={unit.id for unit in candidates},
+            top_k=self.pool if self.retriever == RERANKED else self.top_k,
+        )
+
         by_id = {unit.id: unit for unit in units}
-        ranked = [by_id[doc_id] for doc_id, _ in index.search(question, top_k=self.top_k)]
+        if self.retriever == RERANKED and ranked:
+            ranked = rerank(
+                question,
+                [Candidate(unit=by_id[doc_id], score=score) for doc_id, score in ranked],
+                weights=self.weights,
+                top_k=self.top_k,
+            )
+
+        chosen = [by_id[doc_id] for doc_id, _ in ranked]
 
         # Nothing matched at all. Answering from an empty evidence block fails for
         # a reason that says nothing about the system, so fall back to the whole
@@ -354,17 +412,17 @@ class Orchestrator:
         # token in the question appears anywhere in the document, and the flag
         # goes back to the caller so those questions can be counted rather than
         # quietly mixed in.
-        fallback = not ranked
+        fallback = not chosen
         if fallback:
-            ranked = list(units)
+            chosen = list(units)
 
         if units and units[0].is_table:
             header = units[0]
-            ranked = [header, *(unit for unit in ranked if unit.id != header.id)]
+            chosen = [header, *(unit for unit in chosen if unit.id != header.id)]
 
         citations = tuple(
             Citation(label=label_for(unit), unit_id=unit.id, kind=unit.kind, text=unit.text)
-            for unit in ranked
+            for unit in chosen
         )
         return Retrieval(
             citations=citations,

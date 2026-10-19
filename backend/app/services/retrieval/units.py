@@ -53,6 +53,12 @@ class EvidenceUnit:
     kind: str
     index: int
     text: str
+    # Whether this unit can ever be the answer, judged by what it is rather than by
+    # what it says. The column headers of a table are indexed - they carry the years
+    # and line-item words a question is phrased in, so they are the best index of
+    # what the table is about - but they are not evidence. Not one of the 883
+    # annotated records in the dev split points at row 0.
+    answerable: bool = True
 
     @property
     def is_table(self) -> bool:
@@ -104,6 +110,12 @@ def build_units(example: DocumentLike) -> tuple[EvidenceUnit, ...]:
     lines are kept rather than dropped, so the mapping from annotation index to
     unit stays total and a gold reference can never point at something that was
     silently removed.
+
+    Row 0 of a table is the column header row. It is indexed like any other unit -
+    it is the densest concentration of the words a question uses about that table -
+    and marked unanswerable, because it is a label rather than a figure. That is a
+    property of the table, not of this benchmark: the product path reads a PDF the
+    same way, with the header row first.
     """
     units: list[EvidenceUnit] = []
 
@@ -115,6 +127,7 @@ def build_units(example: DocumentLike) -> tuple[EvidenceUnit, ...]:
                 kind=TABLE,
                 index=index,
                 text=row_text(example.table, index),
+                answerable=index != 0,
             )
         )
 
@@ -137,6 +150,17 @@ def gold_unit_ids(example: FinQAExample) -> set[str]:
     ids = {unit_id(example.id, TABLE, index) for index in example.ann_table_rows}
     ids |= {unit_id(example.id, TEXT, index) for index in example.ann_text_rows}
     return ids
+
+
+def answerable_units(example: DocumentLike) -> tuple[EvidenceUnit, ...]:
+    """The units of a document that a question can be answered from.
+
+    Named for the reason rather than the mechanism, so a caller that wants evidence
+    does not need to know which units happen to be labels. The units left out are
+    still indexed - they are the best description of what a table is about - but
+    they are not candidates.
+    """
+    return tuple(unit for unit in build_units(example) if unit.answerable)
 
 
 def evidence_kinds(example: FinQAExample) -> tuple[str, ...]:

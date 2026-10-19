@@ -1,0 +1,102 @@
+{
+  "generated_at": "2026-10-19T00:06:40+00:00",
+  "k": 10,
+  "pool": 25,
+  "tie": 0.002,
+  "features": [
+    "bm25",
+    "numbers",
+    "coverage",
+    "phrase",
+    "kind"
+  ],
+  "grid": {
+    "bm25": [
+      1.0
+    ],
+    "numbers": [
+      0.0,
+      0.5,
+      1.0,
+      2.0
+    ],
+    "coverage": [
+      0.0,
+      0.5,
+      1.0
+    ],
+    "phrase": [
+      0.0,
+      0.5,
+      1.0
+    ],
+    "kind": [
+      0.0,
+      0.5,
+      1.0,
+      2.0
+    ]
+  },
+  "cross_validation": "weights chosen on train, reported on dev",
+  "train": {
+    "split": "C:\\Users\\hp\\Documents\\Default Project\\ledgerlens-ai\\data\\finqa\\train.json",
+    "limit": 2500,
+    "questions": 2277,
+    "complete_at_k": 0.8696,
+    "mrr": 0.8027,
+    "best_weighting": "bm25=1  numbers=0.5  phrase=0.5  kind=1",
+    "tied_with_best": 11
+  },
+  "chosen": {
+    "bm25": 1.0,
+    "numbers": 0.0,
+    "coverage": 0.0,
+    "phrase": 0.0,
+    "kind": 0.5
+  },
+  "dev": {
+    "split": "C:\\Users\\hp\\Documents\\Default Project\\ledgerlens-ai\\data\\finqa\\dev.json",
+    "questions": 818,
+    "baseline": {
+      "complete_at_k": 0.8276,
+      "mrr": 0.7004
+    },
+    "reranked": {
+      "complete_at_k": 0.9034,
+      "mrr": 0.8216
+    },
+    "band": [
+      {
+        "weights": "bm25=1  numbers=0.5  phrase=0.5  kind=1",
+        "train_complete_at_k": 0.8713,
+        "dev_complete_at_k": 0.9034,
+        "dev_mrr": 0.8353
+      },
+      {
+        "weights": "bm25=1  numbers=0.5  coverage=1  kind=1",
+        "train_complete_at_k": 0.8713,
+        "dev_complete_at_k": 0.8985,
+        "dev_mrr": 0.8291
+      },
+      {
+        "weights": "bm25=1  numbers=0.5  coverage=1  phrase=0.5  kind=1",
+        "train_complete_at_k": 0.8713,
+        "dev_complete_at_k": 0.8961,
+        "dev_mrr": 0.8194
+      },
+      {
+        "weights": "bm25=1  numbers=0.5  coverage=0.5  phrase=0.5  kind=1",
+        "train_complete_at_k": 0.8709,
+        "dev_complete_at_k": 0.8961,
+        "dev_mrr": 0.8325
+      },
+      {
+        "weights": "bm25=1  numbers=0.5  kind=1",
+        "train_complete_at_k": 0.8709,
+        "dev_complete_at_k": 0.9034,
+        "dev_mrr": 0.8147
+      }
+    ],
+    "band_dev_spread": 0.0073
+  }
+}

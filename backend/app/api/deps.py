@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from app.core.config import get_settings
 from app.services.library import DocumentLibrary
 from app.services.llm import LLMProvider, build_provider
-from app.services.reasoning import Orchestrator
+from app.services.reasoning import RERANKED, Orchestrator
 
 
 @lru_cache
@@ -41,4 +41,13 @@ def get_provider() -> LLMProvider:
 @lru_cache
 def get_orchestrator() -> Orchestrator:
     settings = get_settings()
-    return Orchestrator(get_provider(), max_tokens=settings.llm_max_output_tokens or 1024)
+    return Orchestrator(
+        get_provider(),
+        max_tokens=settings.llm_max_output_tokens or 1024,
+        # The served system uses the reranked retriever, because it reads better
+        # evidence and the measurement says so. The evaluation's runs A, D and E were
+        # made before it existed and are recorded as lexical; a run of this
+        # configuration would carry "rerank" in its name, which is why the retriever
+        # is a setting rather than whatever the code happens to do.
+        retriever=RERANKED,
+    )
