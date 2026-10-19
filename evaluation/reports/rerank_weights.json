@@ -39,7 +39,7 @@
   },
   "cross_validation": "weights chosen on train, reported on dev",
   "train": {
-    "split": "C:\\Users\\hp\\Documents\\Default Project\\ledgerlens-ai\\data\\finqa\\train.json",
+    "split": "data/finqa/train.json",
     "limit": 2500,
     "questions": 2277,
     "complete_at_k": 0.8696,
@@ -55,7 +55,7 @@
     "kind": 0.5
   },
   "dev": {
-    "split": "C:\\Users\\hp\\Documents\\Default Project\\ledgerlens-ai\\data\\finqa\\dev.json",
+    "split": "data/finqa/dev.json",
     "questions": 818,
     "baseline": {
       "complete_at_k": 0.8276,
