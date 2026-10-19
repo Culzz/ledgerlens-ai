@@ -1,5 +1,5 @@
-import { Books, ChatCircleDots, FileText, Info, WarningCircle, X } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { Article, Books, ChatCircleDots, FileText, Info, WarningCircle, X } from "@phosphor-icons/react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   ask,
@@ -12,6 +12,7 @@ import {
 } from "./api";
 import AskPanel from "./components/AskPanel";
 import Blank, { SheetArt } from "./components/Blank";
+import Brief from "./components/Brief";
 import Library from "./components/Library";
 import Mark from "./components/Mark";
 import ReportReader from "./components/ReportReader";
@@ -36,6 +37,17 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>("library");
 
+  // Answers to every question asked about the open report, so the brief is a
+  // record of the session rather than only of the last thing asked.
+  const [asked, setAsked] = useState<Answer[]>([]);
+  // Which half of the report pane is showing: the document, or the page about it.
+  const [sheet, setSheet] = useState<"source" | "brief">("source");
+  const [preparing, setPreparing] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // A run stops after the question already in flight. That one cannot be recalled,
+  // and pretending otherwise would be a lie about what was spent.
+  const stop = useRef(false);
+
   // Open a report to begin with, so a first visit lands on a real table with real
   // questions rather than on three empty panels.
   useEffect(() => {
@@ -59,6 +71,8 @@ export default function App() {
 
   async function openReport(id: string) {
     setAnswer(null);
+    setAsked([]);
+    setSheet("source");
     setError(null);
     setView("report");
     try {
@@ -68,19 +82,69 @@ export default function App() {
     }
   }
 
-  async function submit(text: string) {
-    if (!report || busy) return;
+  function remember(result: Answer) {
+    setAsked((current) => {
+      const at = current.findIndex((item) => item.question === result.question);
+      if (at === -1) return [...current, result];
+      const next = [...current];
+      next[at] = result;
+      return next;
+    });
+  }
+
+  // One question, answered and remembered. `where` is the view to land on: asking
+  // from the brief still ends with the answer card in front of the reader.
+  async function answerQuestion(question: string, where: View = "ask") {
+    if (!report || busy || preparing) return;
     setBusy(true);
     setAnswer(null);
     setError(null);
-    setView("ask");
+    setView(where);
     try {
-      setAnswer(await ask(report.id, text));
+      const result = await ask(report.id, question);
+      setAnswer(result);
+      remember(result);
     } catch (cause) {
       setError(describe(cause));
     } finally {
       setBusy(false);
     }
+  }
+
+  // The report's own questions, one at a time, in order. Results land as they
+  // arrive, so the brief fills in while it is being written rather than after.
+  async function prepareBrief() {
+    if (!report || busy || preparing) return;
+    const todo = report.questions.filter(
+      (question) => !asked.some((item) => item.question === question),
+    );
+    if (todo.length === 0) return;
+
+    const reportId = report.id;
+    stop.current = false;
+    setPreparing(true);
+    setProgress({ done: 0, total: todo.length });
+    setError(null);
+    try {
+      for (const question of todo) {
+        if (stop.current) break;
+        remember(await ask(reportId, question));
+        setProgress((current) => (current ? { ...current, done: current.done + 1 } : current));
+      }
+    } catch (cause) {
+      // One failure ends the run. A missing key or a rate limit does not fix itself
+      // on the next question, and spending the rest of a quota to prove that is not
+      // a use of the quota.
+      setError(describe(cause));
+    } finally {
+      setPreparing(false);
+      setProgress(null);
+    }
+  }
+
+  function openAnswer(result: Answer) {
+    setAnswer(result);
+    setView("ask");
   }
 
   const cited = new Set(answer?.evidence.filter((item) => item.cited).map((item) => item.label));
@@ -138,7 +202,7 @@ export default function App() {
           <Library
             selected={report?.id ?? null}
             onSelect={(id) => void openReport(id)}
-            disabled={busy}
+            disabled={busy || preparing}
           />
         </section>
 
@@ -146,10 +210,36 @@ export default function App() {
           <section className="pane pane--reader" aria-label="Report">
             <div className="pane-head">
               <span className="label">Report</span>
-              {report && <span className="meta">{report.filename}</span>}
+              {report && (
+                <button
+                  className="pane-toggle"
+                  onClick={() => setSheet(sheet === "source" ? "brief" : "source")}
+                  aria-label={
+                    sheet === "source" ? "Show the brief for this report" : "Show the report itself"
+                  }
+                >
+                  {sheet === "source" ? <Article size={14} /> : <FileText size={14} />}
+                  <span>{sheet === "source" ? "Brief" : "Source"}</span>
+                </button>
+              )}
             </div>
             {report ? (
-              <ReportReader report={report} cited={cited} offered={offered} />
+              sheet === "brief" ? (
+                <Brief
+                  report={report}
+                  asked={asked}
+                  offline={Boolean(offline)}
+                  progress={progress}
+                  onOpen={openAnswer}
+                  onAsk={(question) => void answerQuestion(question)}
+                  onPrepare={() => void prepareBrief()}
+                  onStop={() => {
+                    stop.current = true;
+                  }}
+                />
+              ) : (
+                <ReportReader report={report} cited={cited} offered={offered} />
+              )
             ) : (
               <Blank
                 art={<SheetArt />}
@@ -172,8 +262,9 @@ export default function App() {
               report={report}
               answer={answer}
               busy={busy}
+              blocked={preparing}
               offline={Boolean(offline)}
-              onSubmit={(text) => void submit(text)}
+              onSubmit={(text) => void answerQuestion(text)}
               onBrowse={() => setView("library")}
             />
           </section>

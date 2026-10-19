@@ -654,6 +654,251 @@ table.statement tr:last-child td {
   box-shadow: inset 0 0 0 1px var(--rule);
 }
 
+/* --- brief -----------------------------------------------------------------
+   The other half of the report pane: a page about the document rather than the
+   document. Set like a memo - a serif heading, a rule, a tally, then the claims -
+   because that is what it is: what this system will and will not say about the
+   report, in the order the report asks. */
+
+.pane-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 0 9px;
+  min-height: 30px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.pane-toggle:hover {
+  color: var(--ink);
+  background: var(--rule-soft);
+}
+
+/* Same trick as the copy buttons: drawn at 30, 44 to hit. */
+.pane-toggle::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+
+.brief {
+  border-left: 1px solid #e6cfc8;
+  padding-left: 14px;
+  margin-left: 3px;
+}
+
+.brief-title {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.brief-sub {
+  margin: 6px 0 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.tally {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 18px;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
+}
+
+.tally-cell {
+  padding: 10px 10px 11px 0;
+}
+
+.tally-cell + .tally-cell {
+  padding-left: 12px;
+  border-left: 1px solid var(--rule);
+}
+
+.tally-cell b {
+  display: block;
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.tally-cell span {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* The tally is counted from the same function that colours the rows, so a cell
+   cannot disagree with the lines under it. */
+.tally-cell[data-tone="good"] b {
+  color: var(--verified);
+}
+
+.tally-cell[data-tone="warn"] b {
+  color: var(--caution);
+}
+
+.tally-cell[data-tone="bad"] b {
+  color: var(--accent);
+}
+
+.brief-note {
+  max-width: 46em;
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.brief-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.brief-offline {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.brief-running {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 16px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.brief-running button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.brief-label {
+  display: block;
+  margin: 24px 0 2px;
+}
+
+.claims {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One claim: the question as the report asked it, the figure the engine got, and
+   the check's verdict. A row is the whole tap target, because the point of the
+   brief is to get from a line to its working in one action. */
+.claim {
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  row-gap: 3px;
+  width: 100%;
+  margin: 0 -6px;
+  padding: 11px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 2px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.claim:hover {
+  background: var(--rule-soft);
+}
+
+.claim-mark {
+  grid-column: 1;
+  grid-row: 1;
+  margin-top: 2px;
+  color: var(--ink-faint);
+}
+
+.claim-q {
+  grid-column: 2;
+  grid-row: 1;
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.claim-figure {
+  grid-column: 3;
+  grid-row: 1;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.claim-note {
+  grid-column: 2 / -1;
+  grid-row: 2;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
+.claim[data-tone="good"] .claim-mark {
+  color: var(--verified);
+}
+
+.claim[data-tone="warn"] .claim-mark {
+  color: var(--caution);
+}
+
+.claim[data-tone="bad"] .claim-mark {
+  color: var(--accent);
+}
+
+/* No figure, so the dash sits where one would be. Saying so in the figure column
+   is the whole point of the brief. */
+.claim[data-tone="bad"] .claim-figure {
+  color: var(--ink-faint);
+}
+
+.claim[data-tone="idle"] .claim-figure {
+  align-self: center;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
 /* --- asking ---------------------------------------------------------------- */
 
 .ask-form {

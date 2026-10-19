@@ -9,17 +9,27 @@ interface Props {
   report: Report | null;
   answer: Answer | null;
   busy: boolean;
+  /** True while the brief is working through the report's questions. */
+  blocked: boolean;
   offline: boolean;
   onSubmit: (question: string) => void;
   onBrowse: () => void;
 }
 
-export default function AskPanel({ report, answer, busy, offline, onSubmit, onBrowse }: Props) {
+export default function AskPanel({
+  report,
+  answer,
+  busy,
+  blocked,
+  offline,
+  onSubmit,
+  onBrowse,
+}: Props) {
   // The draft lives here rather than in App, and App gives this component a key
   // of the report id, so opening another report starts from an empty box without
   // anything having to remember to clear it.
   const [draft, setDraft] = useState("");
-  const canAsk = report !== null && !busy && draft.trim() !== "";
+  const canAsk = report !== null && !busy && !blocked && draft.trim() !== "";
 
   function send(event: React.FormEvent) {
     event.preventDefault();
@@ -68,6 +78,15 @@ export default function AskPanel({ report, answer, busy, offline, onSubmit, onBr
               <span>
                 No model is configured, so this instance is running on the offline stub. It will
                 retrieve the evidence and then decline to answer.
+              </span>
+            </div>
+          )}
+
+          {blocked && (
+            <div className="notice">
+              <span>
+                The brief is working through this report's questions one at a time. This box wakes
+                up when it has finished, so a second question does not go out alongside it.
               </span>
             </div>
           )}
