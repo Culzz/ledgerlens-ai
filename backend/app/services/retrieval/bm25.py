@@ -43,6 +43,7 @@ class BM25Index:
         self.k1 = k1
         self.b = b
         self._postings: dict[str, dict[str, int]] = {}
+        self._frequencies: dict[str, Counter[str]] = {}
         self._lengths: dict[str, int] = {}
         self._documents = 0
         self._average_length = 0.0
@@ -60,8 +61,12 @@ class BM25Index:
             raise ValueError(f"document {doc_id!r} is already indexed")
 
         tokens = tokenize(text)
+        frequencies = Counter(tokens)
         self._lengths[doc_id] = len(tokens)
-        for term, frequency in Counter(tokens).items():
+        # Kept twice, on purpose: by document for scoped search, and by term for a
+        # corpus-wide one. See ``search``.
+        self._frequencies[doc_id] = frequencies
+        for term, frequency in frequencies.items():
             self._postings.setdefault(term, {})[doc_id] = frequency
         self._documents += 1
 
@@ -103,26 +108,50 @@ class BM25Index:
 
         Documents that match nothing are omitted rather than returned with a
         score of zero, so the caller can tell "not found" from "found, weakly".
+
+        A term that appears twice in the query counts twice. That is what it means
+        to accumulate once per query term, and it is the behaviour the recorded
+        baseline was measured with.
+
+        Two ways to reach the same scores. With a candidate set, the candidates'
+        own terms are walked and the query's are looked up among them, which costs
+        one pass over the candidates. Without one, each query term's postings are
+        walked and every document in them scores, which costs one pass over the
+        documents that contain that term. The second is the right shape for a
+        corpus-wide query. The first is the right shape for how retrieval is used
+        here, where the candidates are a few dozen units of one report: walking the
+        postings instead would mean reading the whole corpus to discard almost all
+        of it, for every question, which is minutes per thousand questions rather
+        than milliseconds.
         """
+        weights: dict[str, float] = {}
+        for term, count in Counter(tokenize(query)).items():
+            term_idf = self.idf(term)
+            if term_idf > 0.0:
+                weights[term] = term_idf * count
+        if not weights:
+            return []
+
         scores: dict[str, float] = defaultdict(float)
         k1, b = self.k1, self.b
         average = self._average_length or 1.0
 
-        for term in tokenize(query):
-            postings = self._postings.get(term)
-            if not postings:
-                continue
-            term_idf = self.idf(term)
-            if term_idf <= 0.0:
-                continue
-            for doc_id, frequency in postings.items():
-                if candidates is not None and doc_id not in candidates:
+        if candidates is not None:
+            for doc_id in candidates:
+                frequencies = self._frequencies.get(doc_id)
+                if not frequencies:
                     continue
-                length = self._lengths[doc_id]
-                norm = 1 - b + b * (length / average)
-                scores[doc_id] += term_idf * (frequency * (k1 + 1)) / (
-                    frequency + k1 * norm
-                )
+                norm = 1 - b + b * (self._lengths[doc_id] / average)
+                for term, frequency in frequencies.items():
+                    weight = weights.get(term)
+                    if weight is None:
+                        continue
+                    scores[doc_id] += weight * (frequency * (k1 + 1)) / (frequency + k1 * norm)
+        else:
+            for term, weight in weights.items():
+                for doc_id, frequency in self._postings[term].items():
+                    norm = 1 - b + b * (self._lengths[doc_id] / average)
+                    scores[doc_id] += weight * (frequency * (k1 + 1)) / (frequency + k1 * norm)
 
         # Ties broken by id, so repeated runs produce the same ranking.
         ranked = sorted(scores.items(), key=lambda pair: (-pair[1], pair[0]))
