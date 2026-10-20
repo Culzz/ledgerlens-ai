@@ -19,7 +19,7 @@ import json
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest_path = dest / "manifest.json"
     manifest: dict[str, object] = {
         "source_base": args.base_url,
-        "retrieved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "retrieved_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "files": {},
     }
 
