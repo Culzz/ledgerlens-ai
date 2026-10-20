@@ -9,6 +9,15 @@ If it can't find what it needs, it says so instead of inventing something.
 The chat part isn't the interesting bit. The point is that the language model never does the maths
 and never gets to supply a number.
 
+**Live demo — [ledgerlens-blond.vercel.app](https://ledgerlens-blond.vercel.app)**
+
+![The workspace: a report's table and narrative, with the questions that came with it](screenshots/workspace.png)
+
+| A brief, saved and opened by link | The same app at phone width |
+| --- | --- |
+| ![One line per question, with the check's verdict on each](screenshots/saved-brief.png) | ![The library at 390px](screenshots/mobile.png) |
+
+
 ## Status
 
 The dataset loader, the calculation engine, the retrieval measurement, the evaluation harness, two
@@ -307,13 +316,18 @@ be useful even if it isn't the most accurate thing in the room.
 
 ```
 backend/     FastAPI service and the actual logic (retrieval, reasoning, calculations)
+  migrations/  the SQL the saved briefs need, applied by scripts/migrate.py
 frontend/    React workspace
 evaluation/  benchmark runner, baselines, metrics, reports
 data/        dataset and uploads, git-ignored
-docs/        requirements, architecture, evaluation plan, security
-scripts/     data download and local run helpers
+docs/        requirements, architecture, evaluation, security, deployment
+scripts/     data download, migrations, local run helpers
+screenshots/ the three images in this README, taken from the live demo
 api/         the one function Vercel serves, which imports the app above
 ```
+
+The API documents itself: FastAPI serves OpenAPI at `/docs` on any deployment, and
+`docs/architecture.md` walks through the request path without the swagger.
 
 ## Getting started
 
@@ -419,3 +433,13 @@ a benchmark doesn't make it suitable for an actual investment decision.
 
 FinQA (Chen et al., EMNLP 2021). Splits used as published, never reshuffled. Notes on that and the
 metric definitions are in `docs/evaluation_protocol.md`. No dataset files are committed here.
+
+## Licence and checks
+
+MIT — see `LICENSE`. The FinQA split is not covered by it and is not redistributed here; it is fetched
+from its authors' repository at build time.
+
+The `checks` workflow in `.github/workflows/ci.yml` runs ruff, the test suite, the TypeScript check
+and a production frontend build on every push. Security notes and the share-link model are in
+`SECURITY.md`; deploying, migrating and rolling back are in `docs/deployment.md`.
+
