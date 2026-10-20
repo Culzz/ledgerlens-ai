@@ -17,6 +17,18 @@ and never gets to supply a number.
 | --- | --- |
 | ![One line per question, with the check's verdict on each](screenshots/saved-brief.png) | ![The library at 390px](screenshots/mobile.png) |
 
+## Built with
+
+| Layer | What it is |
+| --- | --- |
+| Reasoning and questions | Python 3.12, FastAPI, Pydantic, httpx — the model adapter speaks plain HTTP, no vendor SDK |
+| Interface | React 18, TypeScript, Vite, hand-written CSS — no component library |
+| Documents | the FinQA dev split (883 questions over 299 report pages), fetched at build time |
+| Saved briefs | Postgres (Neon), one table, one migration |
+| Hosted | Vercel: one Python function plus a static build, nothing else |
+
+The typefaces are self-hosted in `frontend/public/fonts/`, each under the SIL
+Open Font License; see the note beside them.
 
 ## Status
 
