@@ -1,7 +1,9 @@
-import { CheckCircle, Circle, CircleNotch, WarningCircle, XCircle } from "@phosphor-icons/react";
+import { CircleNotch } from "@phosphor-icons/react";
+import { useState } from "react";
 
-import type { Answer, Report } from "../api";
-import { count, formatAnswer, plural, trustOf } from "../format";
+import { saveBrief, type Answer, type Report } from "../api";
+import { count, formatAnswer, noteOfAnswer, plural, toneOfAnswer } from "../format";
+import Claim from "./Claim";
 
 interface Props {
   report: Report;
@@ -16,62 +18,41 @@ interface Props {
   onStop: () => void;
 }
 
-type Tone = "good" | "warn" | "bad";
-
-const MARKS = { good: CheckCircle, warn: WarningCircle, bad: XCircle } as const;
-
 // The row's mark and colour, and the tally above it, both come from this. A strip
 // of numbers that disagreed with the lines it summarises would be the kind of
 // summary this whole system exists not to produce.
-function toneOf(answer: Answer): Tone {
-  if (answer.answer === null) return "bad";
-  return trustOf(answer.audit)?.tone ?? "bad";
-}
-
-// The same words the card uses, because two vocabularies for one verdict is how a
-// reader ends up believing there are two verdicts.
-function noteOf(answer: Answer): string {
-  const trust = trustOf(answer.audit);
-  if (trust) return `${trust.text} · ${trust.detail}`;
-  return answer.failure ?? "no answer";
-}
-
-interface ClaimProps {
+interface LineProps {
   question: string;
   answer: Answer | undefined;
   onOpen: (answer: Answer) => void;
   onAsk: (question: string) => void;
 }
 
-function Claim({ question, answer, onOpen, onAsk }: ClaimProps) {
+function Line({ question, answer, onOpen, onAsk }: LineProps) {
   if (!answer) {
     return (
-      <li>
-        <button className="claim" data-tone="idle" onClick={() => onAsk(question)}>
-          <Circle className="claim-mark" size={15} weight="bold" aria-hidden="true" />
-          <span className="claim-q">{question}</span>
-          <span className="claim-figure">Ask</span>
-          <span className="claim-note">not asked yet</span>
-        </button>
-      </li>
+      <Claim
+        question={question}
+        figure="Ask"
+        note="not asked yet"
+        tone="idle"
+        onClick={() => onAsk(question)}
+      />
     );
   }
 
-  const tone = toneOf(answer);
-  const Mark = MARKS[tone];
   // The six digits the card shows. The exact figure is on the card, one click
   // away, which is where a reader who wants all thirty digits is going anyway.
   const shown = answer.answer === null ? "\u2014" : formatAnswer(answer.answer).shown;
 
   return (
-    <li>
-      <button className="claim" data-tone={tone} onClick={() => onOpen(answer)}>
-        <Mark className="claim-mark" size={15} weight="bold" aria-hidden="true" />
-        <span className="claim-q">{question}</span>
-        <span className="claim-figure num">{shown}</span>
-        <span className="claim-note">{noteOf(answer)}</span>
-      </button>
-    </li>
+    <Claim
+      question={question}
+      figure={shown}
+      note={noteOfAnswer(answer)}
+      tone={toneOfAnswer(answer)}
+      onClick={() => onOpen(answer)}
+    />
   );
 }
 
@@ -95,12 +76,50 @@ export default function Brief({
   onPrepare,
   onStop,
 }: Props) {
+  // A saved brief is a link to a page that re-runs these programs. It is not a
+  // snapshot, so the link is only current while it covers the whole session: ask
+  // another question and the button offers to save again rather than letting a
+  // stale page look complete.
+  const [saved, setSaved] = useState<{ id: string; url: string; count: number } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function save() {
+    if (asked.length === 0 || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    setCopied(false);
+    try {
+      const brief = await saveBrief(
+        report.id,
+        asked.map((item) => ({ question: item.question, program: item.program })),
+      );
+      const id = brief.id;
+      setSaved({ id, url: `${window.location.origin}/b/${id}`, count: asked.length });
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function copy() {
+    if (!saved) return;
+    try {
+      await navigator.clipboard.writeText(saved.url);
+      setCopied(true);
+    } catch {
+      // No clipboard permission. The link is on screen and can be selected.
+    }
+  }
+
   const rows = Math.max(report.table.length - 1, 0);
   const byQuestion = new Map(asked.map((item) => [item.question, item]));
   const remaining = report.questions.filter((question) => !byQuestion.has(question));
   const extras = asked.filter((item) => !report.questions.includes(item.question));
 
-  const tones = asked.map(toneOf);
+  const tones = asked.map(toneOfAnswer);
   const tally = {
     good: tones.filter((tone) => tone === "good").length,
     warn: tones.filter((tone) => tone === "warn").length,
@@ -140,6 +159,26 @@ export default function Brief({
           line with no answer is one the check would not let through.
         </p>
 
+        {asked.length > 0 && (
+          <div className="brief-save">
+            {saved && saved.count === asked.length ? (
+              <>
+                <a className="brief-share" href={saved.url} target="_blank" rel="noreferrer">
+                  {saved.url.replace(/^https?:\/\//, "")}
+                </a>
+                <button className="btn btn--quiet" onClick={() => void copy()}>
+                  {copied ? "Copied" : "Copy link"}
+                </button>
+              </>
+            ) : (
+              <button className="btn btn--quiet" onClick={() => void save()} disabled={saving}>
+                {saving ? "Saving\u2026" : saved ? "Save again" : "Save this brief"}
+              </button>
+            )}
+            {saveError && <span className="brief-offline">{saveError}</span>}
+          </div>
+        )}
+
         {progress ? (
           <div className="brief-running" role="status">
             <CircleNotch className="spin" size={14} weight="bold" aria-hidden="true" />
@@ -164,7 +203,7 @@ export default function Brief({
             <span className="label brief-label">Questions this report came with</span>
             <ol className="claims">
               {report.questions.map((question) => (
-                <Claim
+                <Line
                   key={question}
                   question={question}
                   answer={byQuestion.get(question)}
@@ -186,7 +225,7 @@ export default function Brief({
             <span className="label brief-label">Also asked</span>
             <ol className="claims">
               {extras.map((item) => (
-                <Claim
+                <Line
                   key={item.question}
                   question={item.question}
                   answer={item}

@@ -6,6 +6,8 @@ file to match against.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 # The engine's own limit, imported rather than restated so a request cannot be
@@ -179,3 +181,45 @@ class ExportRequest(BaseModel):
     # nothing here is decided by it, and empty is a valid thing to be.
     provider: str = Field(default="", max_length=80)
     model: str | None = Field(default=None, max_length=120)
+
+
+class BriefRowIn(BaseModel):
+    """One line of a brief, as the caller knows it.
+
+    A question and the program that answered it. There is nowhere to send a figure
+    and nowhere to send a verdict: the server runs the program again and writes down
+    what it finds. ``program`` is null for a line the model never produced one for,
+    which is a thing that happened rather than something to leave out.
+    """
+
+    question: str = Field(min_length=1, max_length=600)
+    program: str | None = Field(default=None, max_length=2000)
+
+
+class BriefRequest(BaseModel):
+    document_id: str = Field(min_length=1, max_length=200)
+    # A report carries a handful of questions; forty is the ceiling a brief can
+    # usefully hold, and a bound keeps one request from writing an unbounded blob.
+    rows: list[BriefRowIn] = Field(min_length=1, max_length=40)
+
+
+class BriefRowOut(BaseModel):
+    question: str
+    program: str | None
+    answer: str | None
+    verdict: str | None
+    unsourced: list[str] = []
+    sourced_count: int = 0
+    literal_count: int = 0
+    labels: list[str] = []
+    # Why there is no answer, when there is none: the same sentence /api/ask would
+    # have returned for the same program.
+    note: str | None = None
+
+
+class BriefOut(BaseModel):
+    id: str
+    document_id: str
+    filename: str
+    created_at: datetime
+    rows: list[BriefRowOut]

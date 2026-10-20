@@ -16,6 +16,10 @@ dependencies = [
     # stdlib's zipfile and an XML writer, and it is imported by the module that
     # builds the workbook rather than by anything on the answering path.
     "openpyxl>=3.1",
+    # Saved briefs. Each brief re-runs its programs and re-audits them, so sharing
+    # one does not depend on trusting the page it was saved from. libpq ships in the
+    # binary wheel, which keeps a deployment from needing a database client.
+    "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]

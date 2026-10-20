@@ -54,6 +54,14 @@ finding out forty minutes into a run.
 `audit_grounding` replays a finished run's stored replies through the verification check. It spends
 nothing, because it calls no model, and it is how the check was measured before it was trusted.
 
+A report opens as its table and narrative, with the questions that came with it. The brief view is the
+record of asking them: one line per question, the figure that came back, and the check's verdict, under
+a tally counted from the same function that colours the lines. A brief can be saved, and the link it
+returns reopens that record. The link carries questions and programs rather than figures, so opening it
+runs the programs again against the report; a shared page cannot show a number this server did not
+compute. Saving needs a Postgres URL and nothing else does — with none set, the rest of the app is
+unaffected and the link is the only thing that says it is not configured.
+
 ## Results
 
 One model throughout: `ministral-14b-2512` on Mistral's free tier. FinQA's dev split, all 883
@@ -328,6 +336,16 @@ rather than the provider, because those terms change without notice. Gemini's fr
 requests a day per model, Groq's 1,000, and Mistral's free mode answers 429 on the first request for
 its Medium and Small chat models while its Ministral ones still answer.
 
+Saved briefs are the one part that wants a database. Point `DATABASE_URL` at a Postgres and run the
+migrations once:
+
+```
+python scripts/migrate.py
+```
+
+There is one table and one file in `backend/migrations/`. Without a database the app works and the
+share button answers with the reason it cannot.
+
 ## Running it somewhere
 
 One Vercel project. The frontend is built at deploy time and served from the CDN; the API is a single
@@ -341,7 +359,9 @@ carries `backend/` and `data/`; the build output never enters it.
 
 Add a project on Vercel, import the repository, and set `MISTRAL_API_KEY` in Environment Variables.
 The framework preset is set to none in `vercel.json`, so leave the dashboard's detection alone;
-nothing else needs a value. The first deploy takes a few minutes and every push rebuilds it.
+nothing else needs a value. Add `DATABASE_URL` too if you want share links — the pooled Neon connection
+string works, and `python scripts/migrate.py` creates the table the first time. The first deploy takes a
+few minutes and every push rebuilds it.
 
 With no key set the app still runs and answers nothing, saying why on the card, so a deploy without a
 key is still a working demo of the retrieval and the interface.

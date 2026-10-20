@@ -96,6 +96,28 @@ export function trustOf(audit: Audit | null): Trust | null {
   }
 }
 
+// A row's mark and the sentence under it. Shared by the page a reader works on and
+// a saved brief opened by link, so the two cannot drift into two vocabularies.
+export type Tone = "good" | "warn" | "bad" | "idle";
+
+/** What a served answer and a stored brief line have in common. */
+export interface Verdict {
+  answer: string | null;
+  audit: Audit | null;
+  failure: string | null;
+}
+
+export function toneOfAnswer(item: Verdict): Tone {
+  if (item.answer === null) return "bad";
+  return trustOf(item.audit)?.tone ?? "bad";
+}
+
+export function noteOfAnswer(item: Verdict): string {
+  const trust = trustOf(item.audit);
+  if (trust) return `${trust.text} · ${trust.detail}`;
+  return item.failure ?? "no answer";
+}
+
 // The answer as markdown, with the citations intact. Bounded by a pipe-free form
 // of the step, because a row label can contain anything and a table row cannot.
 export function toMarkdown(answer: Answer, source: string | null): string {

@@ -207,3 +207,50 @@ export async function exportWorkbook(
   const named = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "");
   return { blob: await response.blob(), filename: named?.[1] ?? "ledgerlens-answer.xlsx" };
 }
+
+/** One line of a brief, as the caller knows it: a question and its program. */
+export interface BriefLine {
+  question: string;
+  /** Null when the model returned nothing runnable for that question. */
+  program: string | null;
+}
+
+/**
+ * A line of a brief, as the server rebuilt it.
+ *
+ * There is no figure on `BriefLine` and there is one here, which is the whole point:
+ * the answer and the verdict on a shared page are computed when the page is saved
+ * and again when it is opened, never carried over from the browser that saved it.
+ */
+export interface BriefRow {
+  question: string;
+  program: string | null;
+  answer: string | null;
+  verdict: Audit["verdict"] | null;
+  unsourced: string[];
+  sourced_count: number;
+  literal_count: number;
+  labels: string[];
+  /** Why there is no answer, when there is none. */
+  note: string | null;
+}
+
+export interface SavedBrief {
+  id: string;
+  document_id: string;
+  filename: string;
+  created_at: string;
+  rows: BriefRow[];
+}
+
+export function saveBrief(documentId: string, lines: BriefLine[]): Promise<SavedBrief> {
+  return request<SavedBrief>("/api/briefs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ document_id: documentId, rows: lines }),
+  });
+}
+
+export function fetchBrief(id: string): Promise<SavedBrief> {
+  return request<SavedBrief>(`/api/briefs/${encodeURIComponent(id)}`);
+}

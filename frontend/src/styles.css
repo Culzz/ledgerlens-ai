@@ -2058,3 +2058,134 @@ table.statement tr:last-child td {
     margin-top: 12px;
   }
 }
+
+/* --- a saved brief ---------------------------------------------------------- */
+
+/* The row that carries the share link, under the tally. It appears only once
+   there is something to save, so a fresh brief is not offering a link to nothing. */
+.brief-save {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.brief-share {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--accent);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.brief-share:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The saved page is the same masthead over one column: there is nothing to work
+   on, so there is nothing to lay out. */
+.app--saved {
+  background: var(--paper);
+}
+
+.saved-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.saved {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 40px 20px 72px;
+}
+
+.saved-title {
+  margin: 2px 0 0;
+  font-family: var(--serif);
+  font-size: clamp(24px, 5vw, 30px);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+.saved-sub {
+  margin: 7px 0 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.saved .tally {
+  margin-top: 24px;
+}
+
+.saved .claims {
+  margin-top: 28px;
+}
+
+/* A line on this page is a record, not a way in. The pointer is the one thing
+   that would say otherwise. */
+.claim[data-static="true"] {
+  cursor: default;
+}
+
+.claim[data-static="true"]:hover {
+  background: none;
+}
+
+.saved-note {
+  max-width: 52em;
+  margin: 24px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.saved-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.saved-loading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 36px 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.saved-missing {
+  max-width: 40em;
+  padding: 40px 0;
+}
+
+.saved-missing h1 {
+  margin: 14px 0 8px;
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.saved-missing p {
+  margin: 0 0 22px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+@media (min-width: 900px) {
+  .saved {
+    padding-top: 56px;
+  }
+}
