@@ -88,3 +88,29 @@ into a response.
   project, run the migration, and the links stop resolving; nothing else breaks.
 - **Spent provider quota:** answers fail with a 503 and the reason. The interface
   and retrieval keep working, so the demo degrades to a reader rather than a 500.
+
+## Free-tier notes
+
+As of October 2026 — these terms change without notice, so check the specific
+model rather than the provider before pointing a split at it:
+
+- Gemini's free tier allows 20 requests a day per model.
+- Groq's free tier allows 1,000 requests a day.
+- Mistral's free mode answers 429 on the first request for its Medium and Small
+  chat models while its Ministral ones still answer — which is why
+  `ministral-14b-2512` is the default here. The adapter speaks the OpenAI
+  chat-completions shape, so Gemini, Groq, Mistral, NVIDIA Build, OpenRouter and
+  OpenAI are a change to `LLM_PROVIDER`/`LLM_MODEL`/key configuration, not code.
+
+Two behaviours worth knowing on any free tier. A function is created on demand, so
+the first request after a quiet spell pays for loading the corpus — a second or
+two, not a minute. And the key is a shared secret sitting behind a public URL,
+which is why the app paces itself between calls (`LLM_MIN_SECONDS_BETWEEN_CALLS`)
+and waits out a rate limit rather than spending through one.
+
+`check_provider` spends one request to confirm the key and the model work, which
+is cheaper than finding out forty minutes into a run:
+
+```
+python -m evaluation.check_provider
+```
