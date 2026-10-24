@@ -5,6 +5,13 @@ import react from "@vitejs/plugin-react";
 // backend, so the browser sees one origin and there is no CORS to think about.
 export default defineConfig({
   plugins: [react()],
+  css: {
+    // The styles are hand-written CSS with no preprocessor. Pinning an empty
+    // postcss config stops Vite from searching parent directories for one —
+    // a checkout inside a workspace that has its own postcss/tailwind config
+    // would otherwise have that config applied to these styles.
+    postcss: { plugins: [] },
+  },
   server: {
     port: 5173,
     proxy: {

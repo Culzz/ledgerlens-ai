@@ -1,9 +1,17 @@
 name: checks
 
+# The push / pull_request triggers are off at the moment: the account's GitHub
+# Actions are blocked by an unresolved billing lock, so every run fails at
+# startup and leaves a red cross on each push. This is one deliberate disable,
+# not a gap — the same four steps are documented in the README and were run
+# against the tree they shipped on. To restore, replace workflow_dispatch:
+# below with:
+#   push:
+#     branches: [main]
+#   pull_request:
+
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   backend:

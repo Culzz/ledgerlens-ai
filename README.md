@@ -181,7 +181,17 @@ Not a stock predictor, not investment advice, not something to run real money pa
 FinQA does not make it suitable for an actual investment decision, and a passed figure check does not
 make an answer correct.
 
-## Licence
+## Licence and checks
 
 MIT — see `LICENSE`. The FinQA split is not covered by it and is not redistributed here; it is
 fetched from its authors' repository at build time.
+
+The checks are the four things a fresh clone can reproduce from the commands
+above: `ruff check backend evaluation scripts`, the backend test suite, the
+TypeScript check and a production frontend build. All four ran against the tree
+this README ships on and pass — no key and no database needed. The same four run
+in CI via `.github/workflows/ci.yml`, currently set to manual runs only: the
+repository's GitHub account is under an Actions billing lock, which fails every
+automatic run at startup, and the trigger goes back on the day the account does
+pay. Security notes and the share-link model are in `SECURITY.md`; deploying,
+migrating and rolling back are in `docs/deployment.md`.
