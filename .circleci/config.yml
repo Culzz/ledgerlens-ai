@@ -1,0 +1,61 @@
+version: 2.1
+
+# The same four checks the README names, as two independent jobs:
+#   ruff + the backend suite (no DATABASE_URL on purpose — the store's
+#   integration test skips and the rest runs against the small fixture)
+#   and the TypeScript check + a production frontend build.
+# Chosen free-tier sizes: one executor each, no orbs, no paid features.
+
+jobs:
+  backend:
+    docker:
+      - image: cimg/python:3.12
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - pip-v1-{{ checksum "pyproject.toml" }}
+      - run:
+          name: install
+          command: pip install -e ".[dev]"
+      - save_cache:
+          key: pip-v1-{{ checksum "pyproject.toml" }}
+          paths:
+            - ~/.cache/pip
+      - run:
+          name: lint
+          command: ruff check backend evaluation scripts
+      - run:
+          name: tests
+          command: python -m pytest backend/tests -q
+
+  frontend:
+    docker:
+      - image: cimg/node:20.18
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - npm-v1-{{ checksum "frontend/package-lock.json" }}
+      - run:
+          name: install
+          command: npm ci
+          working_directory: frontend
+      - save_cache:
+          key: npm-v1-{{ checksum "frontend/package-lock.json" }}
+          paths:
+            - frontend/node_modules
+      - run:
+          name: typecheck
+          command: node node_modules/typescript/bin/tsc --noEmit
+          working_directory: frontend
+      - run:
+          name: production build
+          command: node node_modules/vite/bin/vite.js build
+          working_directory: frontend
+
+workflows:
+  checks:
+    jobs:
+      - backend
+      - frontend

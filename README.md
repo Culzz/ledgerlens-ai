@@ -190,8 +190,7 @@ The checks are the four things a fresh clone can reproduce from the commands
 above: `ruff check backend evaluation scripts`, the backend test suite, the
 TypeScript check and a production frontend build. All four ran against the tree
 this README ships on and pass — no key and no database needed. The same four run
-in CI via `.github/workflows/ci.yml`, currently set to manual runs only: the
-repository's GitHub account is under an Actions billing lock, which fails every
-automatic run at startup, and the trigger goes back on the day the account does
-pay. Security notes and the share-link model are in `SECURITY.md`; deploying,
-migrating and rolling back are in `docs/deployment.md`.
+on every push in CI, configured in `.circleci/config.yml` (two independent
+jobs, free tier, no paid features): lint and tests, then the typecheck and
+production build. Security notes and the share-link model are in
+`SECURITY.md`; deploying, migrating and rolling back are in `docs/deployment.md`.
